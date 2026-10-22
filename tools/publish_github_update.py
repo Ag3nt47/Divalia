@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
@@ -12,19 +13,25 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+import warnings
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "Ag3nt47/Divalia"
 ORIGIN = f"https://github.com/{REPOSITORY}.git"
+MAX_IMAGE_BYTES = 16 * 1024 * 1024
+MAX_IMAGE_DIMENSION = 8192
+MAX_IMAGE_PIXELS = 32 * 1024 * 1024
 
 
 class PublicationError(RuntimeError):
     pass
 
 
-def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def git(
+    *args: str, check: bool = True, binary: bool = False
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
     executable = shutil.which("git")
     if not executable:
         raise PublicationError("Git is unavailable")
@@ -34,7 +41,7 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         [executable, "-c", "core.hooksPath=", "-C", str(ROOT), *args],
         env=env,
         capture_output=True,
-        text=True,
+        text=not binary,
         timeout=120,
         check=False,
     )
@@ -118,7 +125,7 @@ def create_repository() -> None:
                     "name": "Divalia",
                     "private": False,
                     "auto_init": False,
-                    "description": "Optional local-first threat intelligence, multi-model synthesis and reviewed detections for Angerona.",
+                    "description": "Standalone, optional module development and deployment tool for Angerona Security Suite, with AI synthesis, validation and human review.",
                     "has_issues": True,
                     "has_wiki": False,
                 },
@@ -134,21 +141,91 @@ def relative_images() -> list[Path]:
     urls += re.findall(r"<img\b[^>]*\bsrc=[\"\']([^\"\']+)[\"\']", text, re.I)
     paths = []
     for url in urls:
+        if re.match(r"^[A-Za-z]:", url):
+            raise PublicationError(f"invalid README image path: {url}")
         if urlsplit(url).scheme or url.startswith("//"):
             continue
-        relative = Path(unquote(url.split("#")[0]))
-        resolved = (ROOT / relative).resolve()
-        if relative.is_absolute() or not resolved.is_relative_to(ROOT) or not resolved.is_file():
+        parsed = urlsplit(url)
+        decoded = unquote(parsed.path)
+        if (
+            not decoded
+            or "\\" in decoded
+            or "\x00" in decoded
+            or parsed.query
+        ):
             raise PublicationError(f"invalid README image path: {url}")
+        relative = Path(decoded)
+        resolved = (ROOT / relative).resolve()
+        if (
+            ".." in relative.parts
+            or relative.drive
+            or relative.is_absolute()
+            or not resolved.is_relative_to(ROOT.resolve())
+            or not resolved.is_file()
+        ):
+            raise PublicationError(f"invalid README image path: {url}")
+        component = ROOT
+        for part in relative.parts:
+            component = component / part
+            if component.is_symlink():
+                raise PublicationError(f"README image path contains a symlink: {url}")
+        if relative.suffix.lower() != ".png":
+            raise PublicationError(f"README images must be static PNG files: {url}")
         tracked = git("ls-files", "--error-unmatch", "--", relative.as_posix(), check=False)
         if tracked.returncode:
             raise PublicationError(f"README image is untracked: {url}")
-        # This project currently ships no README images. New image assets require
-        # a decoder-backed validity verifier before this gate can be extended.
-        raise PublicationError(
-            "README image added: implement decoder-backed image validation before publication"
-        )
+        with resolved.open("rb") as image_file:
+            data = image_file.read(MAX_IMAGE_BYTES + 1)
+        if not data or len(data) > MAX_IMAGE_BYTES:
+            raise PublicationError(f"README image exceeds the byte budget or is empty: {url}")
+        reviewed = git("show", f"HEAD:{relative.as_posix()}", binary=True).stdout
+        if reviewed != data:
+            raise PublicationError(f"README image differs from reviewed HEAD bytes: {url}")
+        _validate_png(data, url)
+        if resolved not in paths:
+            paths.append(resolved)
     return paths
+
+
+def _validate_png(data: bytes, url: str) -> None:
+    """Decode both PNG structure and pixels before any publication can begin."""
+    try:
+        from PIL import Image, ImageFile
+    except ImportError:
+        raise PublicationError(
+            "README image validation requires Pillow; install the project's dev dependencies"
+        ) from None
+    # A caller must not silently weaken the decoder's truncated-file checks.
+    if ImageFile.LOAD_TRUNCATED_IMAGES:
+        raise PublicationError("README image validation requires strict truncated-image checks")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as candidate:
+                width, height = candidate.size
+                if (
+                    candidate.format != "PNG"
+                    or getattr(candidate, "n_frames", 1) != 1
+                    or width < 1
+                    or height < 1
+                    or width > MAX_IMAGE_DIMENSION
+                    or height > MAX_IMAGE_DIMENSION
+                    or width * height > MAX_IMAGE_PIXELS
+                ):
+                    raise PublicationError(f"README image format or dimensions are invalid: {url}")
+                candidate.verify()
+            with Image.open(io.BytesIO(data)) as candidate:
+                candidate.load()
+    except PublicationError:
+        raise
+    except (
+        OSError,
+        SyntaxError,
+        ValueError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    ):
+        raise PublicationError(f"README image is corrupt or truncated: {url}") from None
 
 
 def publish(*, create: bool = False) -> dict:

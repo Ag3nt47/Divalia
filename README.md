@@ -1,13 +1,21 @@
-# Divalia 2.0
+# Divalia 2.0 — Module Development & Deployment for Angerona
 
-An independent, optional threat intelligence and detection research companion for
-[Angerona Security Suite](https://github.com/Ag3nt47/AngeronaSuite). Angerona runs
-without Divalia. Divalia installs into its own environment and keeps separate state.
+**A standalone, optional module development and deployment tool for
+[Angerona Security Suite](https://github.com/Ag3nt47/AngeronaSuite).** Develop and
+test detector modules, review generated code, and prepare detection packages for
+human-approved deployment through Angerona's DetectionForge. Angerona runs without
+Divalia; Divalia uses its own environment and separate state.
 
 Divalia collects curated intelligence, filters it with a lightweight model,
 asks a heavier model for an observe-only detector, audits its AST, tests it in
 an isolated container, and presents the evidence for human review. Automation
 never approves or deploys a candidate.
+
+| Module development | Deployment to Angerona |
+| --- | --- |
+| Turn threat briefings into detector prototypes with configurable AI models. | Export digest-sealed detection packages, optionally signed with Ed25519. |
+| Inspect source diffs, AST policy results and isolated telemetry tests. | Import, review and promote packages through Angerona DetectionForge. |
+| Approve, test and roll back versions in Divalia's isolated runtime. | Keep Angerona's existing publisher trust and activation requirements. |
 
 ```mermaid
 flowchart LR
@@ -20,6 +28,31 @@ flowchart LR
   F --> H[Angerona declarative package export]
   H --> I[Angerona DetectionForge review and promotion]
 ```
+
+## Screenshots
+
+### Develop and review an Angerona module
+
+![Divalia module review showing source changes, AST policy results and human deployment approval](docs/images/module-review.png)
+
+The actual read-only review report shows the detector's purpose, source diff and
+validation status. This benign demo correctly reports container testing as
+unavailable; it does not represent a tested or deployed module.
+
+### Configure the module development toolchain
+
+![Rendered Divalia CLI transcript showing Angerona module development commands and model provider options](docs/images/cli-workflow.png)
+
+Rendered transcript of actual CLI help and provider output. Use local models or
+explicitly configured remote providers throughout development and review.
+
+### Prepare a deployment for Angerona
+
+![Rendered Divalia CLI transcript showing a digest-sealed detection package export for Angerona DetectionForge](docs/images/deployment-package.png)
+
+Actual export output and package JSON from the demo fixture. Deployment into
+Angerona continues through DetectionForge import, review and promotion.
+See [screenshot provenance and regeneration](docs/screenshots.md).
 
 ## Install and try it
 

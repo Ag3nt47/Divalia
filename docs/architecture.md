@@ -1,4 +1,9 @@
-# Architecture
+# Angerona module development and deployment architecture
+
+Divalia is a standalone, optional module development and deployment tool for
+Angerona Security Suite. Development covers intelligence, model-assisted detector
+synthesis, AST validation, isolated tests and source review. Deployment preparation
+exports detection packages for human approval in Angerona DetectionForge.
 
 ```text
 src/divalia/

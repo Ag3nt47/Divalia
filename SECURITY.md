@@ -4,7 +4,8 @@ Report vulnerabilities privately through the repository owner's GitHub contact
 or private vulnerability reporting when enabled. Do not include secrets or
 personal telemetry in public issues.
 
-Divalia observes and proposes detections. It does not synthesize or deploy
+Divalia develops modules and prepares reviewed detection deployments for Angerona.
+Its generated detectors observe and report. It does not synthesize or deploy
 process termination, firewall modification, persistence, credential access,
 exploit payloads, or other automatic mitigations.
 

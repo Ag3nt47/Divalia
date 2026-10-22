@@ -1,11 +1,14 @@
 # Divalia 2.0
 
-Standalone optional Angerona threat intelligence and reviewed detector synthesis.
+Standalone, optional module development and deployment tool for Angerona Security Suite.
+Develop and validate detector modules; export packages for human-approved deployment
+through Angerona DetectionForge. Divalia's Python runtime remains separate.
 
 - README.md: installation, supported providers, key configuration, worker setup.
 - docs/architecture.md: component contracts and official protocol references.
 - docs/operations.md: collection, review, model setup, export and recovery.
 - docs/validation.md: offline and opt-in integration validation.
+- docs/screenshots.md: actual review and CLI screenshots, fixture provenance and regeneration.
 - SECURITY.md: trust boundaries and fail-closed execution constraints.
 
 Never run generated source on the host or bypass Angerona promotion authorities.

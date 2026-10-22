@@ -1,10 +1,17 @@
 # Validation record
 
 The initial 2.0.0 implementation was validated on Windows with CPython 3.12.10.
-Final local result with Angerona compatibility enabled: **81 passed, 2 skipped,
+Initial local result with Angerona compatibility enabled: **81 passed, 2 skipped,
 129 subtests passed**. Ruff, compilation, dependency consistency, the offline
 demo, source/wheel builds and an import/demo smoke check of the built wheel
 passed. The two skips are real-container tests because Docker is unavailable.
+
+The module-tool positioning and screenshot update passed **99 tests and 129
+subtests**, with 3 skips: the two real-container tests and a Windows symlink test
+unavailable under the local host's permissions. The three screenshots were
+visually reviewed, decoded successfully, and include real CLI/review output with
+demo and unavailable states labeled. Publication tests cover corrupted,
+untracked, redirected and uncommitted image assets as well as exact HEAD bytes.
 The offline suite covers ingestion schemas, sanitization, source isolation,
 durable/semantic deduplication, DNS/redirect/response limits, hostile ASTs,
 container command restrictions and cleanup, provider protocol shapes and privacy
@@ -58,6 +65,7 @@ commit before relying on those environments.
 Publication uses a reviewed clean main commit, the exact canonical Divalia HTTPS
 origin, an atomic non-forced push, ancestry checks against existing public main,
 and post-push checks of public/default main, local HEAD/branch, clean worktree
-and byte-identical public README. There are no relative README image assets;
-the publisher fails closed if any are introduced without a decoder-backed
-validity verifier. Divergence is reported without merge, rebase, reset or force.
+and byte-identical public README. Every relative README screenshot must be
+repository-confined, tracked in the reviewed HEAD, decoder-valid, and identical
+both to its committed bytes and its public main asset. Divergence is reported
+without merge, rebase, reset or force.

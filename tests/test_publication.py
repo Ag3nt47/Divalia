@@ -76,3 +76,131 @@ def test_readme_assets_are_never_silently_skipped(tmp_path, monkeypatch):
     (tmp_path / "README.md").write_text("![missing](missing.png)", encoding="utf-8")
     with pytest.raises(publication.PublicationError, match="invalid README image"):
         publication.relative_images()
+
+
+@pytest.fixture
+def image_repo(tmp_path, monkeypatch):
+    from PIL import Image
+
+    monkeypatch.setattr(publication, "ROOT", tmp_path)
+    image = tmp_path / "docs" / "images" / "review.png"
+    image.parent.mkdir(parents=True)
+    Image.new("RGB", (16, 12), color="#336699").save(image, format="PNG")
+    (tmp_path / "README.md").write_text(
+        "![Review](docs/images/review.png)\n", encoding="utf-8"
+    )
+    publication.git("init", "--quiet")
+    publication.git("add", "README.md", "docs/images/review.png")
+    commit_images()
+    return image
+
+
+def commit_images():
+    publication.git(
+        "-c", "user.name=Offline test", "-c", "user.email=offline@example.invalid",
+        "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Reviewed image fixture",
+    )
+
+
+def test_tracked_decodable_head_png_is_accepted(image_repo):
+    assert publication.relative_images() == [image_repo]
+
+
+def test_duplicate_readme_images_are_verified_once(image_repo):
+    with (publication.ROOT / "README.md").open("a", encoding="utf-8") as readme:
+        readme.write('<img alt="Review again" src="docs/images/review.png">\n')
+    assert publication.relative_images() == [image_repo]
+
+
+def test_untracked_png_is_rejected(image_repo):
+    publication.git("rm", "--cached", "--quiet", "docs/images/review.png")
+    with pytest.raises(publication.PublicationError, match="untracked"):
+        publication.relative_images()
+
+
+def test_staged_image_different_from_head_is_rejected(image_repo):
+    from PIL import Image
+
+    Image.new("RGB", (16, 12), color="#993366").save(image_repo, format="PNG")
+    publication.git("add", "docs/images/review.png")
+    with pytest.raises(publication.PublicationError, match="reviewed HEAD bytes"):
+        publication.relative_images()
+
+
+@pytest.mark.parametrize("damage", ["invalid", "truncated", "checksum"])
+def test_committed_corrupt_or_truncated_png_is_rejected(image_repo, damage):
+    original = image_repo.read_bytes()
+    if damage == "invalid":
+        data = b"This is not a PNG image."
+    elif damage == "truncated":
+        data = original[:-12]
+    else:
+        # Preserve the header and dimensions but corrupt the IDAT checksum.
+        data = bytearray(original)
+        data[-13] ^= 0xFF
+    image_repo.write_bytes(data)
+    publication.git("add", "docs/images/review.png")
+    commit_images()
+    with pytest.raises(publication.PublicationError, match="corrupt or truncated"):
+        publication.relative_images()
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "../outside.png",
+        "docs/../docs/images/review.png",
+        "docs/%2e%2e/docs/images/review.png",
+        "C:/outside.png",
+        "/outside.png",
+        "docs%5cimages%5creview.png",
+        "docs/images/review.png?not-reviewed=1",
+        "docs/images/%00review.png",
+    ],
+)
+def test_unsafe_readme_path_is_rejected(image_repo, reference):
+    (publication.ROOT / "README.md").write_text(
+        f"![Unsafe]({reference})\n", encoding="utf-8"
+    )
+    with pytest.raises(publication.PublicationError, match="invalid README image path"):
+        publication.relative_images()
+
+
+def test_symlink_image_path_is_rejected(image_repo):
+    alias = image_repo.with_name("alias.png")
+    try:
+        alias.symlink_to(image_repo.name)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlink creation is unavailable on this host")
+    (publication.ROOT / "README.md").write_text(
+        "![Alias](docs/images/alias.png)\n", encoding="utf-8"
+    )
+    with pytest.raises(publication.PublicationError, match="symlink"):
+        publication.relative_images()
+
+
+def test_image_byte_budget_is_enforced(image_repo, monkeypatch):
+    monkeypatch.setattr(publication, "MAX_IMAGE_BYTES", len(image_repo.read_bytes()) - 1)
+    with pytest.raises(publication.PublicationError, match="byte budget"):
+        publication.relative_images()
+
+
+def test_image_dimension_budget_is_enforced(image_repo, monkeypatch):
+    monkeypatch.setattr(publication, "MAX_IMAGE_DIMENSION", 15)
+    with pytest.raises(publication.PublicationError, match="dimensions are invalid"):
+        publication.relative_images()
+
+
+def test_missing_decoder_blocks_publication(image_repo, monkeypatch):
+    import builtins
+
+    original_import = builtins.__import__
+
+    def without_pillow(name, *args, **kwargs):
+        if name == "PIL":
+            raise ImportError("No image decoder installed")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_pillow)
+    with pytest.raises(publication.PublicationError, match="requires Pillow"):
+        publication.relative_images()

@@ -319,7 +319,10 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Divalia: optional, standalone Angerona companion")
+    parser = argparse.ArgumentParser(
+        prog="divalia",
+        description="Divalia: standalone, optional module development and deployment tool for Angerona Security Suite"
+    )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--state-dir", type=Path, help="override only Divalia's artifact directory")

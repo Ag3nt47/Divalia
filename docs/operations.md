@@ -1,4 +1,9 @@
-# Operator workflow
+# Angerona module development and deployment workflow
+
+Use Divalia to develop and test modules for Angerona, then prepare reviewed
+detection packages for deployment through Angerona DetectionForge. Divalia is a
+standalone, optional tool; its isolated Python module runtime is separate from
+Angerona's live activation authority.
 
 Use a dedicated virtual environment and a private Divalia state directory.
 Create configuration with `divalia init`, edit the two model roles, and run

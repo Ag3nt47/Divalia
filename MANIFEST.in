@@ -1,4 +1,4 @@
 include README.md LICENSE SECURITY.md AGENTS.md config.example.toml llms.txt
-recursive-include docs *.md
+recursive-include docs *.md *.png
 recursive-include tools *.py
 recursive-include src/divalia *.toml Dockerfile
