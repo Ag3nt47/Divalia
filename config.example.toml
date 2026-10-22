@@ -1,0 +1,53 @@
+[app]
+state_dir = "~/.divalia"
+poll_seconds = 900
+
+[ai]
+provider = "ollama"
+endpoint = "http://127.0.0.1:11434"
+# Examples only: pick models appropriate for your hardware and review their licenses.
+light_model = "llama3.2:3b"
+heavy_model = "qwen2.5-coder:7b"
+allow_remote = false
+timeout = 120
+# key_env names a process environment variable; never put API key values in this file.
+key_env = ""
+
+# Optional per-role override; all other AI values are inherited.
+# [ai.heavy]
+# provider = "openai"  # also anthropic, gemini, lmstudio, llamacpp, compatible, ollama
+# allow_remote = true
+# key_env = "OPENAI_API_KEY"
+# heavy_model = "YOUR_CHOSEN_MODEL"
+# Remote built-in providers use fixed official endpoints, ignoring endpoint above.
+
+[sandbox]
+# Required for Python execution. Resolve a trusted image and paste its immutable digest.
+# No image pull or insecure execution fallback occurs automatically.
+image = ""
+
+[angerona]
+# Exports do not activate anything in Angerona; import/review in DetectionForge.
+# data_dir = "D:/AngeronaData"
+
+[[feeds]]
+kind = "kev"
+url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+credibility = 0.95
+
+[[feeds]]
+kind = "github"
+url = "https://api.github.com/advisories?per_page=20"
+credibility = 0.85
+# token_env = "GITHUB_INTEL_TOKEN"
+
+# [[feeds]]
+# kind = "rss" # RSS or Atom
+# url = "https://YOUR_CURATED_SOURCE/feed.xml"
+# credibility = 0.6
+
+# [[feeds]]
+# kind = "social" # Mastodon-compatible statuses array; curate account/timeline yourself.
+# url = "https://YOUR_INSTANCE/api/v1/accounts/ACCOUNT_ID/statuses?limit=20"
+# credibility = 0.3
+# token_env = "SOCIAL_INTEL_TOKEN"

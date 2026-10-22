@@ -1,0 +1,43 @@
+name: validate
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m compileall -q src tools
+      - run: python -m ruff check src tests tools
+      - run: python -m pytest -q
+      - run: python -m divalia demo
+      - run: python -m build
+  isolated-execution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e ".[dev]"
+      - name: Build immutable local worker from resolved base
+        shell: bash
+        run: |
+          docker pull python:3.12-slim
+          BASE_REF=$(docker image inspect python:3.12-slim --format '{{index .RepoDigests 0}}')
+          docker build --build-arg "BASE_IMAGE=$BASE_REF" -t divalia-ci-worker src/divalia/harness
+          WORKER_ID=$(docker image inspect divalia-ci-worker --format '{{.Id}}')
+          echo "DIVALIA_TEST_SANDBOX_IMAGE=$WORKER_ID" >> "$GITHUB_ENV"
+      - run: python -m pytest -q tests/test_live_sandbox.py

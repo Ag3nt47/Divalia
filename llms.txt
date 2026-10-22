@@ -1,0 +1,14 @@
+# Divalia 2.0
+
+Standalone optional Angerona threat intelligence and reviewed detector synthesis.
+
+- README.md: installation, supported providers, key configuration, worker setup.
+- docs/architecture.md: component contracts and official protocol references.
+- docs/operations.md: collection, review, model setup, export and recovery.
+- docs/validation.md: offline and opt-in integration validation.
+- SECURITY.md: trust boundaries and fail-closed execution constraints.
+
+Never run generated source on the host or bypass Angerona promotion authorities.
+Only a reviewed immutable Linux Docker worker may execute Python candidates.
+Native Go and native Angerona source-code hot reload are unsupported.
+Remote providers require explicit configuration; keys stay in process environment.
