@@ -33,6 +33,8 @@ import xml.etree.ElementTree as ET
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
+from divalia import __version__
+
 from .models import ThreatBriefing
 from .sanitizer import find_cves, normalize_content, sanitize_text, sanitize_url
 
@@ -428,7 +430,7 @@ class IngestionEngine:
 
     async def _fetch(self, feed: FeedConfig) -> bytes:
         headers = {
-            "User-Agent": "Divalia/2.0 (defensive threat-intelligence ingestion)",
+            "User-Agent": f"Divalia/{__version__} (defensive threat-intelligence ingestion)",
             "Accept": "application/json, application/atom+xml, application/rss+xml, application/xml, text/xml",
         }
         if feed.token_env:

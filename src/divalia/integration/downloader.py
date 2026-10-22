@@ -13,6 +13,7 @@ import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 
+from divalia import __version__
 from divalia.storage import check_path
 
 MAX_ARCHIVE_BYTES = 16 * 1024 * 1024
@@ -117,7 +118,7 @@ async def download_companion(commit: str, expected_sha256: str,
 
     def fetch() -> Path:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
-        request = urllib.request.Request(url, headers={"User-Agent": "Divalia-optional-installer/2.0"})
+        request = urllib.request.Request(url, headers={"User-Agent": f"Divalia-optional-installer/{__version__}"})
         with opener.open(request, timeout=30) as response:
             payload = response.read(MAX_ARCHIVE_BYTES + 1)
         return extract_verified_archive(payload, destination, expected_sha256)

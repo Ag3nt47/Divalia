@@ -48,8 +48,10 @@ def render_review(candidate: dict[str, Any], previous_source: str = "") -> str:
 
 def render_html(candidate: dict[str, Any], previous_source: str = "") -> str:
     """Return a standalone side-by-side diff without scripts or external assets."""
+    from divalia import __version__
     from divalia.storage import digest
 
+    display_version = ".".join(__version__.split(".")[:2])
     source = str(candidate.get("source", ""))
     diff = difflib.HtmlDiff(wrapcolumn=88).make_table(
         previous_source.splitlines(),
@@ -101,7 +103,7 @@ summary{{cursor:pointer;font-size:14px;font-weight:650}}pre{{font-size:12px;line
 footer{{font-size:12px;line-height:1.7;color:#8fa1b9;margin-top:22px}}
 @media(max-width:800px){{main{{padding:24px 18px}}header{{align-items:flex-start;flex-direction:column}}h1{{font-size:29px}}.status-grid{{grid-template-columns:1fr}}}}
 </style></head><body><main>
-<header><div class="brand">DIVALIA <span class="tag">/ 2.0</span></div>
+<header><div class="brand">DIVALIA <span class="tag">/ {html.escape(display_version)}</span></div>
 <div class="tag">STANDALONE MODULE TOOLING FOR ANGERONA SECURITY SUITE</div></header>
 <p class="eyebrow">MODULE DEVELOPMENT &amp; DEPLOYMENT</p>
 <h1>Review an Angerona module candidate</h1>

@@ -104,12 +104,15 @@ def transcript(title: str, command: str, output: str, *, package: bool = False) 
 
 
 def document(title: str, introduction: str, content: str, footer: str) -> str:
+    from divalia import __version__
+
+    display_version = ".".join(__version__.split(".")[:2])
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
 <title>{html.escape(title)}</title><style>{STYLE}</style></head><body><main>
-<header><div class="brand">DIVALIA <span class="tag">/ 2.0</span></div>
+<header><div class="brand">DIVALIA <span class="tag">/ {html.escape(display_version)}</span></div>
 <div class="tag">STANDALONE MODULE TOOLING FOR ANGERONA SECURITY SUITE</div></header>
 <p class="eyebrow">MODULE DEVELOPMENT &amp; DEPLOYMENT</p>
 <h1>{html.escape(title)}</h1><p class="intro">{html.escape(introduction)}</p>

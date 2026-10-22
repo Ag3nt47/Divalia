@@ -1,4 +1,4 @@
-# Divalia 2.0 — Module Development & Deployment for Angerona
+# Divalia 1.0 — Module Development & Deployment for Angerona
 
 **A standalone, optional module development and deployment tool for
 [Angerona Security Suite](https://github.com/Ag3nt47/AngeronaSuite).** Develop and

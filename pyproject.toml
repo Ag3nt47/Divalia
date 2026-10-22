@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "divalia"
-version = "2.0.0"
+version = "1.0.0"
 description = "Standalone, optional module development and deployment tool for Angerona Security Suite"
 readme = "README.md"
 requires-python = ">=3.11"

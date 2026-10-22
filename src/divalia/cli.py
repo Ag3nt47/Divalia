@@ -88,7 +88,7 @@ def example_detection() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "id": "divalia.example",
-        "version": "2.0.0",
+        "version": __version__,
         "owner": "Divalia",
         "description": "Observe-only demonstration detecting an explicit DIVALIA_TEST_MARKER.",
         "telemetry": ["process.creation"],

@@ -1,4 +1,4 @@
-# Divalia 2.0
+# Divalia 1.0
 
 Standalone, optional module development and deployment tool for Angerona Security Suite.
 Develop and validate detector modules; export packages for human-approved deployment

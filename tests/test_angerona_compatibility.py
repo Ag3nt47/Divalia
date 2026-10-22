@@ -20,6 +20,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from divalia import __version__
 from divalia.integration.detection_export import export_detection
 
 
@@ -28,7 +29,7 @@ def representative_package() -> dict:
     return {
         "schema_version": 1,
         "id": "divalia.compatibility",
-        "version": "2.0.0",
+        "version": __version__,
         "owner": "Équipe sécurité — 安全",
         "description": "Synthetic benign fixtures for the portable detection subset",
         "telemetry": ["process", "network"],

@@ -1,6 +1,6 @@
 # Validation record
 
-The initial 2.0.0 implementation was validated on Windows with CPython 3.12.10.
+The initial 1.0.0 implementation was validated on Windows with CPython 3.12.10.
 Initial local result with Angerona compatibility enabled: **81 passed, 2 skipped,
 129 subtests passed**. Ruff, compilation, dependency consistency, the offline
 demo, source/wheel builds and an import/demo smoke check of the built wheel
