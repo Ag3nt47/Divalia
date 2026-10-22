@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import asyncio
 import hashlib
 import io
 import json
@@ -184,6 +185,94 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "quarantined"):
             await self.publisher.approve(value, "human", digest(SOURCE))
         self.publisher.runner.run.assert_not_called()
+
+    async def test_same_source_can_be_reviewed_again_without_changing_old_snapshots(self):
+        original = candidate()
+        await self.approve_and_activate(original)
+        original_path = self.publisher._version_path("example", digest(SOURCE))
+        original_record = original_path.read_bytes()
+        original_approval = original_path.with_suffix(".approval.json").read_bytes()
+        second = candidate(SOURCE + "# second stable version\n")
+        await self.approve_and_activate(second)
+        fresh = candidate()
+        fresh.update(created_at="later", explanation="New review of the same implementation")
+        receipt = await self.publisher.approve(fresh, "second human", digest(SOURCE))
+        self.publisher.activate(fresh, receipt)
+        self.assertTrue((await self.publisher.run_active("example", {}))["passed"])
+        self.assertEqual(original_path.read_bytes(), original_record)
+        self.assertEqual(original_path.with_suffix(".approval.json").read_bytes(), original_approval)
+        reviewed_path = self.publisher._version_path("example", digest(SOURCE), receipt["id"])
+        self.assertEqual(json.loads(reviewed_path.read_bytes()), fresh)
+        self.publisher.runner.run.side_effect = lambda source, events: result(source, events, False)
+        report = await self.publisher.run_active("example", {})
+        self.assertEqual(report["plugin"]["active"], digest(second["source"]))
+        self.publisher.runner.run.side_effect = lambda source, events: result(source, events)
+        self.assertTrue((await self.publisher.run_active("example", {}))["passed"])
+
+    async def test_failed_reactivation_never_overwrites_active_review(self):
+        value = candidate()
+        await self.approve_and_activate(value)
+        path = self.publisher._version_path("example", digest(SOURCE))
+        before = path.with_suffix(".approval.json").read_bytes()
+        receipt = await self.publisher.approve(value, "another human", digest(SOURCE))
+        with self.assertRaisesRegex(ValueError, "already active"):
+            self.publisher.activate(value, receipt)
+        self.assertEqual(path.with_suffix(".approval.json").read_bytes(), before)
+        self.assertTrue((await self.publisher.run_active("example", {}))["passed"])
+
+    async def test_invalid_runtime_event_does_not_quarantine_healthy_version(self):
+        await self.approve_and_activate(candidate())
+        before = self.publisher.store.load("plugins", "example")
+        self.publisher.runner.run.reset_mock()
+        nested = {}
+        for _ in range(14):
+            nested = {"child": nested}
+        for event in [{"value": float("nan")}, {"value": "x" * 65_537}, nested]:
+            with self.subTest(event=str(event)[:60]), self.assertRaises(ValueError):
+                await self.publisher.run_active("example", event)
+        self.assertEqual(self.publisher.store.load("plugins", "example"), before)
+        self.assertFalse(self.publisher.store.list("quarantine"))
+        self.publisher.runner.run.assert_not_called()
+
+    async def test_cancelled_review_releases_lock_without_creating_consent(self):
+        started = asyncio.Event()
+
+        async def waiting(source, events):
+            started.set()
+            await asyncio.Event().wait()
+
+        self.publisher.runner.run.side_effect = waiting
+        task = asyncio.create_task(self.publisher.approve(candidate(), "human", digest(SOURCE)))
+        await asyncio.wait_for(started.wait(), 2)
+        with self.assertRaisesRegex(RuntimeError, "busy"):
+            self.publisher.reject(candidate())
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertFalse((self.root / "publisher.lock").exists())
+        self.assertFalse(self.publisher.store.list("approvals"))
+        self.assertFalse(self.publisher.store.list("rejected"))
+
+    async def test_cancelled_runtime_event_keeps_the_approved_version_usable(self):
+        await self.approve_and_activate(candidate())
+        before = self.publisher.store.load("plugins", "example")
+        started = asyncio.Event()
+
+        async def waiting(source, events):
+            started.set()
+            await asyncio.Event().wait()
+
+        self.publisher.runner.run.side_effect = waiting
+        task = asyncio.create_task(self.publisher.run_active("example", {}))
+        await asyncio.wait_for(started.wait(), 2)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(self.publisher.store.load("plugins", "example"), before)
+        self.assertFalse(self.publisher.store.list("quarantine"))
+        self.assertFalse((self.root / "publisher.lock").exists())
+        self.publisher.runner.run.side_effect = lambda source, events: result(source, events)
+        self.assertTrue((await self.publisher.run_active("example", {}))["passed"])
 
 
 class ExportTests(unittest.TestCase):

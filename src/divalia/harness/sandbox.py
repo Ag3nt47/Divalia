@@ -113,7 +113,10 @@ class _BoundedProtocol(asyncio.SubprocessProtocol):
         if len(data) > remaining:
             self.error = _OutputLimit("container output exceeded the configured byte limit")
             if self.transport is not None:
-                self.transport.close()
+                try:
+                    self.transport.kill()
+                except ProcessLookupError:
+                    pass
 
     def connection_lost(self, exc: Exception | None) -> None:
         if not self.finished.done():
@@ -144,12 +147,19 @@ async def _run_bounded(
             transport.get_returncode(), bytes(protocol.stdout), bytes(protocol.stderr)
         )
     finally:
-        # Public Transport.close closes every pipe and kills a running child.
-        transport.close()
+        # Reap explicitly before closing pipes. Transport.close() alone kills a
+        # running child but emits asyncio warnings and may defer process cleanup.
+        if transport.get_returncode() is None:
+            try:
+                transport.kill()
+            except ProcessLookupError:
+                pass
         try:
             await asyncio.wait_for(asyncio.shield(protocol.finished), timeout=3)
         except (TimeoutError, ProcessLookupError):
             pass
+        finally:
+            transport.close()
 
 
 def _validate_json_tree(value: Any, depth: int = 0) -> None:
@@ -170,6 +180,22 @@ def _validate_json_tree(value: Any, depth: int = 0) -> None:
             raise ValueError("telemetry string exceeds the size limit")
     elif value is not None and type(value) not in {bool, int, float}:
         raise ValueError("telemetry must contain only JSON values")
+
+
+def normalize_telemetry(telemetry: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Validate bounded input before serialization and return an isolated snapshot.
+
+    Callers can distinguish malformed input from a detector execution failure;
+    invalid events must not quarantine an otherwise healthy detector.
+    """
+    if (not isinstance(telemetry, list) or not 1 <= len(telemetry) <= 32
+            or any(not isinstance(event, dict) for event in telemetry)):
+        raise ValueError("provide between 1 and 32 telemetry dictionaries")
+    _validate_json_tree(telemetry)
+    serialized = canonical_json(telemetry)
+    if len(serialized) > 262_144:
+        raise ValueError("telemetry exceeds 256 KiB")
+    return json.loads(serialized)
 
 
 class SandboxRunner:
@@ -194,19 +220,8 @@ class SandboxRunner:
         if not audit.passed:
             return SandboxResult(False, "rejected", audit.issues, **base)
         try:
-            events = json.loads(
-                canonical_json(DEFAULT_TELEMETRY if telemetry is None else telemetry)
-            )
-            if (
-                not isinstance(events, list)
-                or not 1 <= len(events) <= 32
-                or any(not isinstance(event, dict) for event in events)
-            ):
-                raise ValueError("provide between 1 and 32 telemetry dictionaries")
-            _validate_json_tree(events)
+            events = normalize_telemetry(DEFAULT_TELEMETRY if telemetry is None else telemetry)
             serialized = canonical_json(events)
-            if len(serialized) > 262_144:
-                raise ValueError("telemetry exceeds 256 KiB")
             base.update(
                 telemetry_sha256=hashlib.sha256(serialized).hexdigest(),
                 test_sha256=test_fingerprint(events),

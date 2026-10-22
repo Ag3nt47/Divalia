@@ -9,6 +9,10 @@ class ModelRouter(BaseProvider):
     """Choose a configured adapter per role. No implicit remote fallback or disclosure."""
 
     def __init__(self, config: dict[str, Any]) -> None:
+        if not isinstance(config, dict) or any(
+            not isinstance(config.get(role, {}), dict) for role in ("light", "heavy")
+        ):
+            raise ValueError("AI configuration and role overrides must be tables")
         self.providers = {
             role: create_provider({**config, **config.get(role, {})}) for role in ("light", "heavy")
         }

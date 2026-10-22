@@ -1,0 +1,93 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "allocation_tracing": true,
+  "network": "none; trusted in-memory fixture fetcher",
+  "source_execution": "none; AST validation only",
+  "workloads": {
+    "ingestion": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 0.913657,
+          "peak_bytes": 271723,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.693223,
+          "peak_bytes": 170873,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 1000,
+        "new": {
+          "seconds": 2.990284,
+          "peak_bytes": 1785829,
+          "result_count": 1000
+        },
+        "duplicate_burst": {
+          "seconds": 2.35424,
+          "peak_bytes": 1533417,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 5000,
+        "new": {
+          "seconds": 39.053401,
+          "peak_bytes": 8466245,
+          "result_count": 5000
+        },
+        "duplicate_burst": {
+          "seconds": 75.571296,
+          "peak_bytes": 4626625,
+          "result_count": 0
+        }
+      }
+    ],
+    "non-cve": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 0.984684,
+          "peak_bytes": 1286193,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.720287,
+          "peak_bytes": 154522,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 1000,
+        "new": {
+          "seconds": 5.084863,
+          "peak_bytes": 11818010,
+          "result_count": 1000
+        },
+        "duplicate_burst": {
+          "seconds": 3.904152,
+          "peak_bytes": 1375034,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 5000,
+        "new": {
+          "seconds": 35.150917,
+          "peak_bytes": 18483977,
+          "result_count": 5000
+        },
+        "duplicate_burst": {
+          "seconds": 20.154671,
+          "peak_bytes": 4055642,
+          "result_count": 0
+        }
+      }
+    ]
+  },
+  "reviewed_version": "1.0.0",
+  "measurement_note": "Diagnostic results from a busy Windows host; no portable performance threshold or controlled speedup claim."
+}

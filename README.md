@@ -76,6 +76,24 @@ Edit `divalia.toml` to select feeds, models and the sandbox image. API keys are
 never part of this file. [config.example.toml](config.example.toml) documents all
 settings. See [operations](docs/operations.md) for a complete workflow.
 
+You can also develop a module directly from your own Python source and labeled
+telemetry fixtures, without an AI provider:
+
+```powershell
+divalia --config divalia.toml create marker_detector.py --id marker-observer --fixtures fixtures.json --explanation "Observe an explicit test marker"
+divalia --config divalia.toml review marker-observer --html review.html
+divalia --config divalia.toml retest marker-observer
+divalia --config divalia.toml list candidates --limit 20
+```
+
+See the [complete source and fixture example](docs/operations.md#write-a-module-without-ai).
+Creating or retesting a candidate still requires the reviewed container worker
+for a passing result. Missing isolation saves a blocked candidate for inspection.
+For a practical module and matching Angerona package, follow the
+[encoded PowerShell example](examples/encoded-powershell/README.md). Its 14
+synthetic fixtures document normalized telemetry, benign cases and narrow
+string-matching coverage; it does not classify every encoded command as malicious.
+
 ## Models and API keys
 
 Model names are configurable strings; choose models supported by your runtime
@@ -125,6 +143,10 @@ pull explicitly requested models:
 divalia --config divalia.toml runtime
 divalia --config divalia.toml runtime --pull YOUR_CHOSEN_MODEL --consent
 ```
+
+`doctor` reports the configured light and heavy roles separately, including
+each Ollama model's presence and each role's remote-inference policy. It does
+not make paid inference requests or certify container execution readiness.
 
 The runtime downloader accepts an official HTTPS installer URL, a separately
 verified SHA-256 and explicit consent. It saves the installer for operator
@@ -201,6 +223,10 @@ Offline tests never call paid APIs or execute generated Python on the host.
 The GitHub workflow includes Linux/Windows Python 3.11–3.13 checks and a separate
 real Linux-container test job. Opt-in integration checks and local validation
 results are documented in [validation](docs/validation.md).
+
+The [performance and module-workflow review](docs/performance-review.md) records
+the ingestion/archive fixes, reproducible 100/1,000/5,000-item measurements,
+allocation peaks and the limits of measurements from a busy host.
 
 Project structure and provider protocol references are in
 [architecture](docs/architecture.md). License: [MIT](LICENSE).

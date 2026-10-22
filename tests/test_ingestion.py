@@ -81,6 +81,11 @@ class SanitizerTests(unittest.TestCase):
             ThreatBriefing.from_dict({**briefing.to_dict(), "credibility": float("nan")})
         with self.assertRaises(ValueError):
             ThreatBriefing.from_dict({**briefing.to_dict(), "cves": "CVE-2026-12345"})
+        for invalid in (10**1000, -(10**1000), float("inf"), float("nan"), True, "0.5"):
+            with self.subTest(invalid_type=type(invalid).__name__), self.assertRaises(ValueError):
+                ThreatBriefing.from_dict({**briefing.to_dict(), "credibility": invalid})
+        with self.assertRaises(ValueError):
+            ThreatBriefing.from_dict({**briefing.to_dict(), "corroboration": []})
 
 
 class IngestionTests(unittest.IsolatedAsyncioTestCase):
@@ -189,9 +194,7 @@ class IngestionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(all(brief.corroboration == "unverified" for brief in results))
         self.assertEqual(results[0].source_url, urls[0])
-        self.assertIn(
-            "https://www.cve.org/CVERecord?id=CVE-2026-10001", results[0].evidence_urls
-        )
+        self.assertIn("https://www.cve.org/CVERecord?id=CVE-2026-10001", results[0].evidence_urls)
         self.assertIn("https://github.com/example/repo/commit/123", results[1].evidence_urls)
         self.assertNotIn("steal", results[3].summary)
 
@@ -288,6 +291,79 @@ class IngestionTests(unittest.IsolatedAsyncioTestCase):
         engine = self.engine([{"kind": "github", "url": url}], {url: json.dumps(records).encode()})
         self.assertEqual(len(await engine.ingest()), 1)
 
+    async def test_exact_and_cve_duplicates_skip_embedding_recomputation(self) -> None:
+        url = "https://example.org/gh"
+        records = [{"summary": "Vendor issue", "cve_id": "CVE-2026-10001"}]
+        payloads = {url: json.dumps(records).encode()}
+        engine = self.engine([{"kind": "github", "url": url}], payloads)
+        self.assertEqual(len(await engine.ingest()), 1)
+        with patch(
+            "divalia.core.ingestion._features", side_effect=AssertionError("duplicate embedding")
+        ):
+            self.assertEqual(await engine.ingest(), [])
+            records[0]["summary"] = "A second report of this CVE"
+            payloads[url] = json.dumps(records).encode()
+            self.assertEqual(await engine.ingest(), [])
+
+    async def test_near_duplicate_window_remains_bounded_to_latest_thousand(self) -> None:
+        url = "https://example.org/gh"
+        records = [
+            {
+                "summary": f"Independent advisory {index}",
+                "description": " ".join(f"unique-{index}-{part}" for part in range(16)),
+            }
+            for index in range(1002)
+        ]
+        payloads = {url: json.dumps(records).encode()}
+        engine = self.engine([{"kind": "github", "url": url}], payloads, max_items_per_feed=2000)
+        self.assertEqual(len(await engine.ingest()), 1002)
+        payloads[url] = json.dumps(
+            [
+                {**records[index], "description": records[index]["description"] + " today"}
+                for index in (0, 1001)
+            ]
+        ).encode()
+        new = await engine.ingest()
+        self.assertEqual([brief.title for brief in new], ["Independent advisory 0"])
+        # Eviction affects approximate matching only: exact older history stays indexed.
+        payloads[url] = json.dumps([records[0]]).encode()
+        self.assertEqual(await engine.ingest(), [])
+
+    async def test_next_cycle_observes_history_committed_by_another_engine(self) -> None:
+        url = "https://example.org/gh"
+        first = "suspicious encrypted command traffic across enterprise networks affecting monitored vendor services"
+        payloads = {
+            url: json.dumps([{"summary": "Vendor advisory", "description": first}]).encode()
+        }
+        engine = self.engine([{"kind": "github", "url": url}], payloads)
+        self.assertEqual(len(await engine.ingest()), 1)
+        other_payloads = {
+            url: json.dumps(
+                [
+                    {
+                        "summary": "Independent update",
+                        "description": "kernel driver privilege boundary memory corruption patch exploit telemetry process signal",
+                    }
+                ]
+            ).encode()
+        }
+        other = self.engine([{"kind": "github", "url": url}], other_payloads)
+        self.assertEqual(len(await other.ingest()), 1)
+        value = json.loads(other_payloads[url])
+        value[0]["description"] += " today"
+        payloads[url] = json.dumps(value).encode()
+        self.assertEqual(await engine.ingest(), [])
+
+    async def test_repeated_duplicate_does_not_rewrite_unchanged_metadata(self) -> None:
+        url = "https://example.org/gh"
+        records = [{"summary": "Vendor issue", "cve_id": "CVE-2026-10001"}]
+        engine = self.engine([{"kind": "github", "url": url}], {url: json.dumps(records).encode()})
+        await engine.ingest()
+        await engine.ingest()  # First duplicate adds the source URL as evidence.
+        changes = engine._database.total_changes
+        self.assertEqual(await engine.ingest(), [])
+        self.assertEqual(engine._database.total_changes, changes)
+
     async def test_missing_token_fails_only_configured_source(self) -> None:
         url = "https://example.org/private"
         engine = self.engine(
@@ -382,10 +458,22 @@ class TransportTests(unittest.TestCase):
             {"kind": "rss", "url": "https://user:secret@example.org/"},
             {"kind": "rss", "url": "https://example.org/", "credibility": float("inf")},
             {"kind": "rss", "url": "https://example.org/", "token_env": "TOKEN\r\nInjected"},
+            {"kind": [], "url": "https://example.org/"},
+            {"kind": {}, "url": "https://example.org/"},
+            {"kind": "rss", "url": "https://example.org/", "credibility": 10**1000},
         ):
             with self.subTest(config=config):
                 with self.assertRaises(ValueError):
                     FeedConfig.from_dict(config)
+
+    def test_ingestion_timeout_rejects_boolean_and_huge_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for timeout in (True, 10**1000, float("inf"), float("nan")):
+                with (
+                    self.subTest(timeout_type=type(timeout).__name__),
+                    self.assertRaises(ValueError),
+                ):
+                    IngestionEngine([], directory, fetch_timeout=timeout)
 
 
 if __name__ == "__main__":

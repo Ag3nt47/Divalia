@@ -8,7 +8,7 @@ public DNS answers and verify the original hostname with the platform trust stor
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
+from collections import Counter, OrderedDict
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -76,15 +76,15 @@ class FeedConfig:
         kind = value.get("kind")
         credibility = value.get("credibility", 0.5)
         token_env = value.get("token_env")
-        if kind not in _KINDS:
+        if not isinstance(kind, str) or kind not in _KINDS:
             raise ValueError(f"Unsupported feed kind: {kind!r}")
         if url is None:
             raise ValueError("Feed URL must be a credential-free public HTTPS URL")
         if (
             isinstance(credibility, bool)
             or not isinstance(credibility, (int, float))
-            or not math.isfinite(credibility)
             or not 0 <= credibility <= 1
+            or not math.isfinite(credibility)
         ):
             raise ValueError("Feed credibility must be a finite number in [0, 1]")
         if token_env is not None and (
@@ -268,19 +268,64 @@ def _features(text: str) -> tuple[list[str], dict[str, float]]:
     return sorted(counts)[:2048], {index: value / magnitude for index, value in vector.items()}
 
 
-def _similar(
-    tokens: list[str],
-    vector: dict[str, float],
-    other_tokens: list[str],
-    other_vector: dict[str, float],
-) -> bool:
-    if len(tokens) < 8 or len(other_tokens) < 8:
-        return False
-    left, right = set(tokens), set(other_tokens)
-    # A lexical check guards against embedding hash collisions and very short text.
-    if len(left & right) / max(1, len(left | right)) < 0.80:
-        return False
-    return sum(value * other_vector.get(index, 0.0) for index, value in vector.items()) >= 0.95
+class _NearDuplicateIndex:
+    """Transaction-local, bounded view of the same 1,000 most recent claims.
+
+    Decode stored features once and use token postings to reject unrelated claims
+    before cosine scoring. The lexical/cosine thresholds and newest-first match
+    order remain unchanged. A new index is created for each ingestion transaction
+    so another collector's committed history is visible on the next cycle.
+    """
+
+    def __init__(self, database: sqlite3.Connection) -> None:
+        self.database = database
+        self.entries: OrderedDict[str, tuple[frozenset[str], dict[str, float], int]] = OrderedDict()
+        self.postings: dict[str, set[str]] = {}
+        self.sequence = 0
+        self.loaded = False
+
+    def _load(self) -> None:
+        if self.loaded:
+            return
+        rows = self.database.execute(
+            "SELECT id,tokens,vector FROM briefings WHERE NOT EXISTS (SELECT 1 FROM briefing_cves c WHERE c.briefing_id=briefings.id) ORDER BY rowid DESC LIMIT 1000"
+        ).fetchall()
+        for identifier, tokens, vector in reversed(rows):
+            self.add(identifier, json.loads(tokens), json.loads(vector))
+        self.loaded = True
+
+    def add(self, identifier: str, tokens: list[str], vector: dict[str, float]) -> None:
+        features = frozenset(tokens)
+        self.entries[identifier] = features, vector, self.sequence
+        self.sequence += 1
+        if len(features) >= 8:
+            for token in features:
+                self.postings.setdefault(token, set()).add(identifier)
+        if len(self.entries) > 1000:
+            old_id, (old_tokens, _, _) = self.entries.popitem(last=False)
+            if len(old_tokens) >= 8:
+                for token in old_tokens:
+                    posting = self.postings[token]
+                    posting.remove(old_id)
+                    if not posting:
+                        del self.postings[token]
+
+    def find(self, tokens: list[str], vector: dict[str, float]) -> str | None:
+        self._load()
+        if len(tokens) < 8:
+            return None
+        overlaps: Counter[str] = Counter()
+        for token in tokens:
+            overlaps.update(self.postings.get(token, ()))
+        for identifier in sorted(overlaps, key=lambda item: self.entries[item][2], reverse=True):
+            other_tokens, other_vector, _ = self.entries[identifier]
+            overlap = overlaps[identifier]
+            # Exact Jaccard cardinalities preserve the lexical collision guard.
+            if overlap / (len(tokens) + len(other_tokens) - overlap) < 0.80:
+                continue
+            if sum(value * other_vector.get(index, 0.0) for index, value in vector.items()) >= 0.95:
+                return identifier
+        return None
 
 
 class IngestionEngine:
@@ -309,9 +354,10 @@ class IngestionEngine:
         ):
             raise ValueError("max_items_per_feed must be an integer in [1, 2000]")
         if (
-            not isinstance(fetch_timeout, (int, float))
-            or not math.isfinite(fetch_timeout)
+            isinstance(fetch_timeout, bool)
+            or not isinstance(fetch_timeout, (int, float))
             or not 0.1 <= fetch_timeout <= 120
+            or not math.isfinite(fetch_timeout)
         ):
             raise ValueError("fetch_timeout must be in [0.1, 120] seconds")
         if (
@@ -412,9 +458,10 @@ class IngestionEngine:
             results = await asyncio.gather(*(collect(feed) for feed in self.feeds))
             new_ids: list[str] = []
             with self._database:
+                near_index = _NearDuplicateIndex(self._database)
                 for feed, briefings in results:
                     for briefing in briefings:
-                        if self._remember(briefing, feed.url):
+                        if self._remember(briefing, feed.url, near_index):
                             new_ids.append(briefing.id)
             # Later sources in this batch may add cross-reporting metadata.
             return [
@@ -639,10 +686,11 @@ class IngestionEngine:
                 results.append(briefing)
         return results
 
-    def _remember(self, briefing: ThreatBriefing, feed_url: str) -> bool:
+    def _remember(
+        self, briefing: ThreatBriefing, feed_url: str, near_index: _NearDuplicateIndex
+    ) -> bool:
         content = normalize_content(briefing.title + " " + briefing.summary)
         digest = hashlib.sha256((content + "\0" + ",".join(briefing.cves)).encode()).hexdigest()
-        tokens, vector = _features(content)
         row = self._database.execute(
             "SELECT id,data FROM briefings WHERE content_hash=?", (digest,)
         ).fetchone()
@@ -654,17 +702,12 @@ class IngestionEngine:
                 (",".join(briefing.cves),),
             ).fetchone()
         if row is None and not briefing.cves:
-            candidates = self._database.execute(
-                "SELECT id,data,tokens,vector FROM briefings WHERE NOT EXISTS (SELECT 1 FROM briefing_cves c WHERE c.briefing_id=briefings.id) ORDER BY rowid DESC LIMIT 1000"
-            ).fetchall()
-            row = next(
-                (
-                    (candidate[0], candidate[1])
-                    for candidate in candidates
-                    if _similar(tokens, vector, json.loads(candidate[2]), json.loads(candidate[3]))
-                ),
-                None,
-            )
+            tokens, vector = _features(content)
+            match = near_index.find(tokens, vector)
+            if match is not None:
+                row = self._database.execute(
+                    "SELECT id,data FROM briefings WHERE id=?", (match,)
+                ).fetchone()
         host = urlsplit(feed_url).hostname or ""
         if row is not None:
             identifier, data = row
@@ -675,7 +718,7 @@ class IngestionEngine:
                     "SELECT host FROM reporting_sources WHERE briefing_id=?", (identifier,)
                 )
             }
-            if len(hosts) < 32:
+            if host not in hosts and len(hosts) < 32:
                 self._database.execute(
                     "INSERT OR IGNORE INTO reporting_sources VALUES (?,?)", (identifier, host)
                 )
@@ -690,17 +733,21 @@ class IngestionEngine:
                     )
                 )
             )[:64]
-            previous = replace(
+            updated = replace(
                 previous,
                 evidence_urls=references,
                 credibility=max(previous.credibility, briefing.credibility),
                 corroboration="cross_reported" if len(hosts) > 1 else "unverified",
             )
-            self._database.execute(
-                "UPDATE briefings SET data=? WHERE id=?",
-                (json.dumps(previous.to_dict(), ensure_ascii=False), identifier),
-            )
+            if updated != previous:
+                self._database.execute(
+                    "UPDATE briefings SET data=? WHERE id=?",
+                    (json.dumps(updated.to_dict(), ensure_ascii=False), identifier),
+                )
             return False
+        # Exact content/CVE matches need no feature hashing or candidate scans.
+        if briefing.cves:
+            tokens, vector = _features(content)
         self._database.execute(
             "INSERT INTO briefings VALUES (?,?,?,?,?,?)",
             (
@@ -720,6 +767,8 @@ class IngestionEngine:
                 "INSERT INTO briefing_cve_sets VALUES (?,?)", (",".join(briefing.cves), briefing.id)
             )
         self._database.execute("INSERT INTO reporting_sources VALUES (?,?)", (briefing.id, host))
+        if not briefing.cves:
+            near_index.add(briefing.id, tokens, vector)
         return True
 
     def close(self) -> None:

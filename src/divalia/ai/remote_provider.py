@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import re
 from typing import Any
@@ -38,7 +37,7 @@ class RemoteProvider(HTTPProvider):
                 "model": model,
                 "stream": False,
                 "store": False,
-                "max_completion_tokens": 4096,
+                "max_completion_tokens": 256 if role == "light" else 4096,
                 "messages": [
                     {"role": "developer", "content": system},
                     {"role": "user", "content": prompt},
@@ -46,10 +45,15 @@ class RemoteProvider(HTTPProvider):
             }
         elif self.kind == "anthropic":
             path = "/messages"
-            headers = {"anthropic-version": "2023-06-01"}
+            secret = os.environ.get(self.key_env)
+            if not secret:
+                raise ProviderError(
+                    f"required credential environment variable missing: {self.key_env}"
+                )
+            headers = {"anthropic-version": "2023-06-01", "x-api-key": secret}
             payload = {
                 "model": model,
-                "max_tokens": 4096,
+                "max_tokens": 256 if role == "light" else 4096,
                 "system": system,
                 "messages": [{"role": "user", "content": prompt}],
             }
@@ -67,12 +71,11 @@ class RemoteProvider(HTTPProvider):
                 "systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
                 "generationConfig": {
-                    "maxOutputTokens": 4096,
+                    "maxOutputTokens": 256 if role == "light" else 4096,
                     "responseMimeType": "application/json",
                 },
             }
-        async with self._semaphore:
-            value = await asyncio.to_thread(self._request_sync, path, payload, headers=headers)
+        value = await self.request(path, payload, headers=headers)
         try:
             if self.kind == "openai":
                 output = value["choices"][0]["message"]["content"]

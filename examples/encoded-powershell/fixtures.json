@@ -1,0 +1,110 @@
+[
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "powershell.exe",
+      "cmdline": "powershell.exe -NoProfile -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA="
+    },
+    "expected_match": true
+  },
+  {
+    "event": {
+      "event_type": "PROCESS.CREATION",
+      "process_name": "PwSh.ExE",
+      "cmdline": "pwsh.exe -EnC VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA="
+    },
+    "expected_match": true
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "powershell.exe",
+      "cmdline": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA="
+    },
+    "expected_match": true
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "powershell.exe",
+      "cmdline": "powershell.exe -e VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA="
+    },
+    "expected_match": true
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "powershell.exe",
+      "cmdline": "powershell.exe -NoProfile -File C:\\Admin\\Inventory.ps1"
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "cmd.exe",
+      "cmdline": "cmd.exe /c echo -EncodedCommand example"
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "powershell.exe",
+      "cmdline": "powershell.exe -EncodedCommandSuffix example"
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "network.connection",
+      "process_name": "powershell.exe",
+      "cmdline": "powershell.exe -EncodedCommand example"
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "powershell.exe",
+      "cmdline": null
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": null,
+      "cmdline": "powershell.exe -EncodedCommand example"
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": 42,
+      "cmdline": 123
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "powershell.exe",
+      "cmdline": "powershell.exe\t-EncodedCommand\texample"
+    },
+    "expected_match": false
+  },
+  {
+    "event": {
+      "event_type": "process.creation",
+      "process_name": "C:\\Windows\\powershell.exe",
+      "cmdline": "powershell.exe -EncodedCommand example"
+    },
+    "expected_match": false
+  },
+  {
+    "event": {},
+    "expected_match": false
+  }
+]

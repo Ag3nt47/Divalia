@@ -22,6 +22,8 @@ def render_review(candidate: dict[str, Any], previous_source: str = "") -> str:
             "telemetry": candidate.get("telemetry"),
             "expected_matches": candidate.get("expected_matches"),
             "angerona_detection": candidate.get("detection"),
+            "detection_audit": candidate.get("detection_audit"),
+            "quarantine_reason": candidate.get("quarantine_reason"),
         },
         indent=2,
         ensure_ascii=True,
@@ -41,6 +43,7 @@ def render_review(candidate: dict[str, Any], previous_source: str = "") -> str:
     )
     return (
         f"Divalia Angerona module candidate {json.dumps(candidate.get('id', ''))}\n"
+        f"Candidate state: {json.dumps(candidate.get('state', 'unknown'))}\n"
         f"Source SHA-256: {digest(source)}\nExplanation: {explanation}\n"
         f"Validation evidence:\n{report}\n\n{safe_diff}\n"
     )
@@ -68,6 +71,7 @@ def render_html(candidate: dict[str, Any], previous_source: str = "") -> str:
     audit_label = "Policy passed" if audit_passed else "Needs attention"
     isolation_label = html.escape(str(sandbox.get("status", "not run")))
     identifier = html.escape(str(candidate.get("id", "unknown")))
+    state = html.escape(str(candidate.get("state", "unknown")))
     explanation = html.escape(str(candidate.get("explanation", "No explanation provided.")))
     ast_class = "passed" if audit_passed else "blocked"
     sandbox_class = "passed" if sandbox_passed else "blocked"
@@ -116,7 +120,7 @@ footer{{font-size:12px;line-height:1.7;color:#8fa1b9;margin-top:22px}}
 <div class="card"><div class="label">Deployment authority</div><div class="value">Human review required</div>
 <div class="note">Angerona retains its trust and promotion gates.</div></div></section>
 <section class="panel"><h2>Module purpose &amp; evidence limits</h2><p class="explanation">{explanation}</p></section>
-<section class="panel"><h2>Source changes</h2><div class="identity"><span class="note">Candidate: {identifier}</span>
+<section class="panel"><h2>Source changes</h2><div class="identity"><span class="note">Candidate: {identifier} · State: {state}</span>
 <code>SHA-256 {digest(source)}</code></div><div class="diff-wrap">{diff}</div></section>
 <details class="panel"><summary>Validation evidence, telemetry fixtures and package details</summary><pre>{evidence}</pre></details>
 <section class="panel deployment"><h2>Deploy through Angerona DetectionForge</h2>

@@ -10,6 +10,7 @@ import logging.handlers
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -23,11 +24,11 @@ from divalia.core.ingestion import IngestionEngine
 from divalia.core.models import ThreatBriefing
 from divalia.harness.ast_validator import validate_source
 from divalia.harness.sandbox import SandboxRunner
-from divalia.integration.detection_export import export_detection
+from divalia.integration.detection_export import export_detection, seal_detection
 from divalia.integration.publisher import Publisher
 from divalia.integration.review import render_html, render_review
-from divalia.pipeline import Pipeline
-from divalia.storage import ArtifactStore, atomic_write, check_path, digest
+from divalia.pipeline import Pipeline, prepare_candidate
+from divalia.storage import IDENTIFIER, ArtifactStore, atomic_write, check_path, digest
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,17 @@ def _pipeline(config: Config, store: ArtifactStore) -> Pipeline:
     )
 
 
+def _round_robin_briefings(store: ArtifactStore, after: str) -> Iterator[str]:
+    """Rotate filenames without decoding archived, rejected or already-built items."""
+    earlier = []
+    for identifier in store.iter_ids("briefings"):
+        if identifier <= after:
+            earlier.append(identifier)
+        else:
+            yield identifier
+    yield from earlier
+
+
 async def _cycle(config: Config, store: ArtifactStore, *, synthesize: bool, limit: int) -> dict:
     # Retain every briefing before generation; model/network failures do not consume it.
     engine = IngestionEngine(config.feeds, config.state_dir / "intelligence")
@@ -60,27 +72,56 @@ async def _cycle(config: Config, store: ArtifactStore, *, synthesize: bool, limi
     generated = []
     if synthesize:
         pipeline = _pipeline(config, store)
+        cursor = ""
+        if store.path("queue-state", "synthesis").exists():
+            cursor = store.load("queue-state", "synthesis").get("after", "")
+            if not isinstance(cursor, str) or (cursor and not IDENTIFIER.fullmatch(cursor)):
+                raise ValueError("invalid synthesis queue cursor")
         pending = []
-        for item in store.list("briefings"):
-            brief = ThreatBriefing.from_dict(item)
-            identifier = "candidate-" + digest(brief.id)[:24]
-            if store.path("filter-decisions", brief.id).exists():
-                decision = store.load("filter-decisions", brief.id)
-                if decision.get("relevant") is False:
+        for briefing_id in _round_robin_briefings(store, cursor):
+            identifier = "candidate-" + digest(briefing_id)[:24]
+            if store.path("candidates", identifier).exists():
+                continue
+            relevant = None
+            if store.path("filter-decisions", briefing_id).exists():
+                try:
+                    decision = store.load("filter-decisions", briefing_id)
+                    relevant = decision.get("relevant")
+                except (ValueError, OSError, RecursionError) as exc:
+                    # This is a cache, not authority. Re-filter malformed cache
+                    # entries instead of letting one damaged file stop the queue.
+                    store.audit(
+                        "filter_cache_invalid",
+                        briefing_id=briefing_id,
+                        error_type=type(exc).__name__,
+                    )
+                if relevant is False:
                     continue
-            if not store.path("candidates", identifier).exists():
-                pending.append(brief)
-        for brief in pending[:limit]:
+            pending.append((briefing_id, relevant is True))
+            if len(pending) >= limit:
+                break
+        failures = []
+        for briefing_id, already_relevant in pending:
+            # Persist before model calls: an interrupted or repeatedly failing
+            # briefing must not monopolize the next bounded watch cycle.
+            store.save("queue-state", "synthesis", {"after": briefing_id})
             try:
-                if await pipeline.filter(brief):
+                brief = ThreatBriefing.from_dict(store.load("briefings", briefing_id))
+                if brief.id != briefing_id:
+                    raise ValueError("briefing identity differs from its stored filename")
+                if already_relevant or await pipeline.filter(brief):
                     candidate = await pipeline.synthesize(brief)
                     generated.append({"id": candidate["id"], "state": candidate["state"]})
-            except (ValueError, OSError, RuntimeError, KeyError, RecursionError) as exc:
+            except (ValueError, OSError, RuntimeError, KeyError, TypeError, RecursionError) as exc:
                 logger.warning(
-                    "Candidate synthesis failed for %s (%s)", brief.id, type(exc).__name__
+                    "Candidate synthesis failed for %s (%s)", briefing_id, type(exc).__name__
                 )
-                store.audit("synthesis_failed", briefing_id=brief.id, error_type=type(exc).__name__)
-    return {"ingested": len(briefs), "generated": generated}
+                store.audit(
+                    "synthesis_failed", briefing_id=briefing_id, error_type=type(exc).__name__
+                )
+                failures.append({"briefing_id": briefing_id, "error_type": type(exc).__name__})
+        return {"ingested": len(briefs), "generated": generated, "failures": failures}
+    return {"ingested": len(briefs), "generated": generated, "failures": []}
 
 
 def example_detection() -> dict[str, Any]:
@@ -152,11 +193,16 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
             "remote_inference": config.ai.get("allow_remote", False) is True,
         }
         try:
-            provider = create_provider(config.ai)
-            if isinstance(provider, OllamaProvider):
-                status["ollama"] = await check_runtime(provider)
-            else:
-                status["provider"] = "configured; no remote request performed"
+            router = ModelRouter(config.ai)
+            status["roles"] = {}
+            for role, provider in router.providers.items():
+                role_status = {"model": provider.model(role), "remote": provider.allow_remote}
+                if isinstance(provider, OllamaProvider):
+                    role_status.update(await check_runtime(provider, roles=(role,)))
+                else:
+                    role_status["readiness"] = "configured; no remote request performed"
+                status["roles"][role] = role_status
+            status["remote_inference"] = any(row["remote"] for row in status["roles"].values())
         except (ValueError, PermissionError) as exc:
             status["provider_configuration"] = str(exc)
         _json(status)
@@ -170,7 +216,8 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
                 raise PermissionError("model downloads require --consent")
             _json(await provider.pull(args.pull, consent=True))
             status = await check_runtime(provider)
-            if args.pull not in status.get("models", []):
+            models = status.get("models", [])
+            if args.pull not in models and f"{args.pull}:latest" not in models:
                 raise RuntimeError(
                     "model pull succeeded but readiness listing did not include that model"
                 )
@@ -216,13 +263,20 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
         _json(await _cycle(config, store, synthesize=False, limit=0))
     elif args.command in {"once", "watch"}:
         if args.command == "once":
-            _json(await _cycle(config, store, synthesize=True, limit=args.limit))
+            result = await _cycle(config, store, synthesize=True, limit=args.limit)
+            _json(result)
+            return (
+                2
+                if result["failures"]
+                or any(row["state"] != "pending" for row in result["generated"])
+                else 0
+            )
         else:
             while True:
                 _json(await _cycle(config, store, synthesize=True, limit=args.limit))
                 await asyncio.sleep(config.poll_seconds)
     elif args.command == "list":
-        values = store.list(args.category)
+        values = store.iter_values(args.category, limit=args.limit)
         _json(
             [
                 {
@@ -235,7 +289,44 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
         )
     elif args.command == "synthesize":
         brief = ThreatBriefing.from_dict(store.load("briefings", args.briefing_id))
-        _json(await _pipeline(config, store).synthesize(brief, feedback=args.feedback))
+        candidate = await _pipeline(config, store).synthesize(brief, feedback=args.feedback)
+        _json(candidate)
+        return 0 if candidate["state"] == "pending" else 2
+    elif args.command == "create":
+        if args.source.stat().st_size > 32768:
+            raise ValueError("source exceeds 32 KiB")
+        document = seal_detection(_read_json(args.detection)) if args.detection else None
+        candidate = await prepare_candidate(
+            store,
+            SandboxRunner(image=config.sandbox_image or None),
+            identifier=args.id,
+            source=args.source.read_text(encoding="utf-8"),
+            explanation=args.explanation,
+            fixtures=_read_json(args.fixtures),
+            detection=document,
+        )
+        _json(candidate)
+        return 0 if candidate["state"] == "pending" else 2
+    elif args.command == "retest":
+        previous = store.load("candidates", args.candidate_id)
+        candidate = await prepare_candidate(
+            store,
+            SandboxRunner(image=config.sandbox_image or None),
+            identifier=args.candidate_id,
+            source=previous["source"],
+            explanation=previous["explanation"],
+            fixtures=[
+                {"event": event, "expected_match": expected}
+                for event, expected in zip(
+                    previous["telemetry"], previous["expected_matches"], strict=True
+                )
+            ],
+            briefing_id=previous.get("briefing_id", ""),
+            detection=previous.get("detection"),
+            origin=previous.get("origin", "operator"),
+        )
+        _json(candidate)
+        return 0 if candidate["state"] == "pending" else 2
     elif args.command == "validate":
         if args.source.stat().st_size > 32768:
             raise ValueError("source exceeds 32 KiB")
@@ -269,6 +360,10 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
                 elif choice == "reject":
                     publisher.reject(candidate, input("Reason: ").strip())
                 elif choice == "modify":
+                    if not candidate.get("briefing_id"):
+                        raise ValueError(
+                            "Edit this operator-authored source and run create again; retest repeats validation without AI"
+                        )
                     brief = ThreatBriefing.from_dict(
                         store.load("briefings", candidate["briefing_id"])
                     )
@@ -285,14 +380,31 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
             publisher.reject(candidate, args.reason)
             _json({"id": args.candidate_id, "state": "rejected"})
         elif args.command == "reprompt":
+            if not candidate.get("briefing_id"):
+                raise ValueError(
+                    "Edit this operator-authored source and run create again; retest repeats validation without AI"
+                )
             brief = ThreatBriefing.from_dict(store.load("briefings", candidate["briefing_id"]))
-            _json(await _pipeline(config, store).synthesize(brief, feedback=args.feedback))
+            replacement = await _pipeline(config, store).synthesize(brief, feedback=args.feedback)
+            _json(replacement)
+            return 0 if replacement["state"] == "pending" else 2
         else:
             document = candidate.get("detection")
             if not isinstance(document, dict):
                 raise ValueError(
                     "candidate has no declarative Angerona detection; use export-file with a reviewed package"
                 )
+            from divalia.integration.detection_export import validate_fixture_agreement
+
+            validate_fixture_agreement(
+                seal_detection(document),
+                [
+                    {"event": event, "expected_match": expected}
+                    for event, expected in zip(
+                        candidate["telemetry"], candidate["expected_matches"], strict=True
+                    )
+                ],
+            )
             _json(export_detection(document, args.output, args.private_key, args.key_id))
     elif args.command == "export-file":
         _json(export_detection(_read_json(args.source), args.output, args.private_key, args.key_id))
@@ -321,7 +433,7 @@ async def dispatch(args: argparse.Namespace, config: Config) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="divalia",
-        description="Divalia: standalone, optional module development and deployment tool for Angerona Security Suite"
+        description="Divalia: standalone, optional module development and deployment tool for Angerona Security Suite",
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--config", type=Path)
@@ -338,9 +450,24 @@ def build_parser() -> argparse.ArgumentParser:
         child.add_argument("--limit", type=int, default=3)
     listing = subs.add_parser("list")
     listing.add_argument("category", choices=["briefings", "candidates", "plugins"])
+    listing.add_argument(
+        "--limit", type=int, default=100, help="load at most this many records (default: 100)"
+    )
     synth = subs.add_parser("synthesize")
     synth.add_argument("briefing_id")
     synth.add_argument("--feedback", default="")
+    creation = subs.add_parser(
+        "create", help="validate your own detector and create a reviewable module candidate"
+    )
+    creation.add_argument("source", type=Path)
+    creation.add_argument("--id", required=True)
+    creation.add_argument("--fixtures", type=Path, required=True)
+    creation.add_argument("--explanation", required=True)
+    creation.add_argument("--detection", type=Path)
+    retest = subs.add_parser(
+        "retest", help="repeat a candidate's validation without generating new code"
+    )
+    retest.add_argument("candidate_id")
     validation = subs.add_parser("validate")
     validation.add_argument("source", type=Path)
     validation.add_argument("--telemetry", type=Path)
@@ -387,8 +514,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if hasattr(args, "limit") and not 1 <= args.limit <= 20:
-        print("Divalia: --limit must be 1..20", file=sys.stderr)
+    maximum_limit = 10000 if args.command == "list" else 20
+    if hasattr(args, "limit") and not 1 <= args.limit <= maximum_limit:
+        print(f"Divalia: --limit must be 1..{maximum_limit}", file=sys.stderr)
         return 2
     handler = None
     try:

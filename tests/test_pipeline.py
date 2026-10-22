@@ -84,8 +84,9 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
             self.store.save("briefings", brief["id"], brief)
         provider = FakeProvider('{"relevant": false, "reason": "noise"}')
         pipeline = Pipeline(self.store, provider, FakeSandbox([]))
-        with patch("divalia.cli.IngestionEngine") as engine_type, patch(
-            "divalia.cli._pipeline", return_value=pipeline
+        with (
+            patch("divalia.cli.IngestionEngine") as engine_type,
+            patch("divalia.cli._pipeline", return_value=pipeline),
         ):
             engine_type.return_value.ingest = AsyncMock(return_value=[])
             config = Config(state_dir=self.store.root)
@@ -93,6 +94,143 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
             await _cycle(config, self.store, synthesize=True, limit=1)
         self.assertEqual(len(provider.calls), 2)
         self.assertNotEqual(provider.calls[0]["prompt"], provider.calls[1]["prompt"])
+
+    async def test_failed_briefings_rotate_across_bounded_watch_cycles(self):
+        from divalia.cli import _cycle
+        from divalia.config import Config
+
+        for index in range(2):
+            brief = {**self.brief.to_dict(), "id": f"brief-{index}"}
+            self.store.save("briefings", brief["id"], brief)
+        pipeline = Pipeline(self.store, FakeProvider("unused"), FakeSandbox([]))
+        pipeline.filter = AsyncMock(return_value=True)
+        pipeline.synthesize = AsyncMock(side_effect=RuntimeError("model unavailable"))
+        results = []
+        with (
+            patch("divalia.cli.IngestionEngine") as engine,
+            patch("divalia.cli._pipeline", return_value=pipeline),
+        ):
+            engine.return_value.ingest = AsyncMock(return_value=[])
+            for _ in range(3):
+                results.append(
+                    await _cycle(
+                        Config(state_dir=self.store.root), self.store, synthesize=True, limit=1
+                    )
+                )
+        attempted = [call.args[0].id for call in pipeline.synthesize.await_args_list]
+        self.assertEqual(attempted, ["brief-0", "brief-1", "brief-0"])
+        self.assertEqual([row["failures"][0]["briefing_id"] for row in results], attempted)
+        self.assertEqual(self.store.load("queue-state", "synthesis"), {"after": "brief-0"})
+
+    async def test_synthesis_retry_reuses_cached_positive_filter_decision(self):
+        from divalia.cli import _cycle
+        from divalia.config import Config
+
+        self.store.save("briefings", self.brief.id, self.brief.to_dict())
+        provider = FakeProvider('{"relevant": true}')
+        pipeline = Pipeline(self.store, provider, FakeSandbox([]))
+        pipeline.synthesize = AsyncMock(side_effect=RuntimeError("retryable inference failure"))
+        with (
+            patch("divalia.cli.IngestionEngine") as engine,
+            patch("divalia.cli._pipeline", return_value=pipeline),
+        ):
+            engine.return_value.ingest = AsyncMock(return_value=[])
+            for _ in range(2):
+                result = await _cycle(
+                    Config(state_dir=self.store.root), self.store, synthesize=True, limit=1
+                )
+                self.assertEqual(len(result["failures"]), 1)
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(pipeline.synthesize.await_count, 2)
+
+    async def test_corrupt_eligible_briefing_is_reported_without_starving_next_cycle(self):
+        from divalia.cli import _cycle
+        from divalia.config import Config
+
+        broken = self.store.path("briefings", "brief-000")
+        broken.parent.mkdir(parents=True, exist_ok=True)
+        broken.write_text("not JSON", encoding="utf-8")
+        self.store.save("briefings", self.brief.id, self.brief.to_dict())
+        provider = FakeProvider('{"relevant": false}')
+        with (
+            patch("divalia.cli.IngestionEngine") as engine,
+            patch(
+                "divalia.cli._pipeline",
+                return_value=Pipeline(self.store, provider, FakeSandbox([])),
+            ),
+        ):
+            engine.return_value.ingest = AsyncMock(return_value=[])
+            config = Config(state_dir=self.store.root)
+            first = await _cycle(config, self.store, synthesize=True, limit=1)
+            second = await _cycle(config, self.store, synthesize=True, limit=1)
+        self.assertEqual(first["failures"][0]["briefing_id"], "brief-000")
+        self.assertEqual(second["failures"], [])
+        self.assertEqual(len(provider.calls), 1)
+
+    async def test_cached_irrelevant_archive_is_skipped_without_decoding_briefing(self):
+        from divalia.cli import _cycle
+        from divalia.config import Config
+
+        archived = self.store.path("briefings", "brief-000")
+        archived.parent.mkdir(parents=True, exist_ok=True)
+        archived.write_text("irrelevant archive must not be decoded", encoding="utf-8")
+        self.store.save("filter-decisions", "brief-000", {"relevant": False})
+        self.store.save("briefings", self.brief.id, self.brief.to_dict())
+        provider = FakeProvider('{"relevant": false}')
+        with (
+            patch("divalia.cli.IngestionEngine") as engine,
+            patch(
+                "divalia.cli._pipeline",
+                return_value=Pipeline(self.store, provider, FakeSandbox([])),
+            ),
+        ):
+            engine.return_value.ingest = AsyncMock(return_value=[])
+            result = await _cycle(
+                Config(state_dir=self.store.root), self.store, synthesize=True, limit=1
+            )
+        self.assertEqual(result["failures"], [])
+        self.assertEqual(len(provider.calls), 1)
+
+    async def test_corrupt_filter_cache_is_rebuilt(self):
+        from divalia.cli import _cycle
+        from divalia.config import Config
+
+        self.store.save("briefings", self.brief.id, self.brief.to_dict())
+        cache = self.store.path("filter-decisions", self.brief.id)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text("not JSON", encoding="utf-8")
+        provider = FakeProvider('{"relevant": false}')
+        with (
+            patch("divalia.cli.IngestionEngine") as engine,
+            patch(
+                "divalia.cli._pipeline",
+                return_value=Pipeline(self.store, provider, FakeSandbox([])),
+            ),
+        ):
+            engine.return_value.ingest = AsyncMock(return_value=[])
+            result = await _cycle(
+                Config(state_dir=self.store.root), self.store, synthesize=True, limit=1
+            )
+        self.assertEqual(result["failures"], [])
+        self.assertIs(self.store.load("filter-decisions", self.brief.id)["relevant"], False)
+        self.assertEqual(len(provider.calls), 1)
+
+    async def test_untagged_runtime_pull_accepts_normalized_latest_name(self):
+        from argparse import Namespace
+        from divalia.ai.ollama_provider import OllamaProvider
+        from divalia.cli import dispatch
+        from divalia.config import Config
+
+        provider = OllamaProvider("http://127.0.0.1:1", light_model="llama3", heavy_model="llama3")
+        args = Namespace(command="runtime", pull="llama3", consent=True)
+        with (
+            patch("divalia.cli.create_provider", return_value=provider),
+            patch.object(provider, "pull", return_value={"status": "success"}) as pull,
+            patch("divalia.cli.check_runtime", return_value={"models": ["llama3:latest"]}),
+            patch("divalia.cli._json"),
+        ):
+            self.assertEqual(await dispatch(args, Config()), 0)
+        pull.assert_awaited_once_with("llama3", consent=True)
 
     async def test_synthesis_preserves_untrusted_evidence_and_stops_at_pending_review(self):
         provider = FakeProvider(json.dumps(self.payload))
@@ -202,6 +340,83 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         ]:
             with self.subTest(text=text[:60]), self.assertRaises(ValueError):
                 parse_json(text)
+
+    async def test_unrelated_archived_briefings_are_not_decoded_for_bounded_queue(self):
+        from divalia.cli import _cycle
+        from divalia.config import Config
+
+        skipped = self.store.path("briefings", "brief-000")
+        skipped.parent.mkdir(parents=True, exist_ok=True)
+        skipped.write_text("invalid old content must not be decoded", encoding="utf-8")
+        from divalia.storage import digest
+
+        self.store.save(
+            "candidates", "candidate-" + digest("brief-000")[:24], {"id": "already-reviewed"}
+        )
+        self.store.save("briefings", self.brief.id, self.brief.to_dict())
+        provider = FakeProvider('{"relevant": false}')
+        with (
+            patch("divalia.cli.IngestionEngine") as engine,
+            patch(
+                "divalia.cli._pipeline",
+                return_value=Pipeline(self.store, provider, FakeSandbox([])),
+            ),
+        ):
+            engine.return_value.ingest = AsyncMock(return_value=[])
+            result = await _cycle(
+                Config(state_dir=self.store.root), self.store, synthesize=True, limit=1
+            )
+        self.assertEqual(result["failures"], [])
+        self.assertEqual(len(provider.calls), 1)
+
+    async def test_sandbox_success_must_be_bound_to_exact_source_and_tests(self):
+        sandbox = FakeSandbox([{"alert": True}, None])
+        original = sandbox.run
+
+        async def tampered(source, telemetry=None):
+            from dataclasses import replace
+
+            result = await original(source, telemetry)
+            return replace(result, source_sha256="0" * 64)
+
+        sandbox.run = tampered
+        candidate = await Pipeline(
+            self.store, FakeProvider(json.dumps(self.payload)), sandbox
+        ).synthesize(self.brief)
+        self.assertEqual(candidate["state"], "blocked")
+        self.assertEqual(candidate["sandbox"]["status"], "protocol_error")
+
+    async def test_invalid_optional_deployment_package_is_reported_before_export(self):
+        payload = {**self.payload, "detection": {"schema_version": 1, "id": "incomplete"}}
+        candidate = await Pipeline(
+            self.store, FakeProvider(json.dumps(payload)), FakeSandbox([{}, None])
+        ).synthesize(self.brief)
+        self.assertEqual(candidate["state"], "pending")
+        self.assertFalse(candidate["detection_audit"]["passed"])
+        self.assertTrue(candidate["detection_audit"]["issues"])
+
+    async def test_retesting_quarantined_source_cannot_restore_pending_status(self):
+        from divalia.storage import digest
+
+        self.store.save(
+            "quarantine", "q-" + digest(SOURCE), {"reason": "human rejected this source"}
+        )
+        candidate = await Pipeline(
+            self.store, FakeProvider(json.dumps(self.payload)), FakeSandbox([{}, None])
+        ).synthesize(self.brief)
+        self.assertEqual(candidate["state"], "quarantined")
+        self.assertIn("human rejected", candidate["quarantine_reason"])
+
+    async def test_valid_package_with_incompatible_python_fixtures_is_flagged(self):
+        from divalia.cli import example_detection
+
+        payload = {**self.payload, "detection": example_detection()}
+        candidate = await Pipeline(
+            self.store, FakeProvider(json.dumps(payload)), FakeSandbox([{}, None])
+        ).synthesize(self.brief)
+        self.assertEqual(candidate["state"], "pending")
+        self.assertFalse(candidate["detection_audit"]["passed"])
+        self.assertIn("disagrees", candidate["detection_audit"]["issues"][0])
 
 
 if __name__ == "__main__":

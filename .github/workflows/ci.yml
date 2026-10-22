@@ -41,4 +41,14 @@ jobs:
           docker build --build-arg "BASE_IMAGE=$BASE_REF" -t divalia-ci-worker src/divalia/harness
           WORKER_ID=$(docker image inspect divalia-ci-worker --format '{{.Id}}')
           echo "DIVALIA_TEST_SANDBOX_IMAGE=$WORKER_ID" >> "$GITHUB_ENV"
-      - run: python -m pytest -q tests/test_live_sandbox.py
+      - name: Exercise real module development, execution, rollback and export
+        run: python -m pytest -q -s tests/test_live_sandbox.py tests/test_live_workflow.py --junitxml=artifacts/live-workflow.xml
+      - name: Measure offline ingestion, AST and archive workloads
+        run: python tools/benchmark_performance.py --sizes 100 1000 5000 --workloads ingestion non-cve ast storage --output artifacts/performance.json
+      - name: Measure bounded allocation peaks
+        run: python tools/benchmark_performance.py --sizes 100 --trace --workloads ingestion non-cve sanitizer ast storage --output artifacts/allocations.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-module-workflow
+          path: artifacts/

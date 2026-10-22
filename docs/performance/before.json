@@ -1,0 +1,76 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "allocation_tracing": false,
+  "status": "incomplete; old quadratic workload terminated to limit resource usage",
+  "termination": {
+    "process_elapsed_seconds": 399.55,
+    "cpu_seconds": 256.45,
+    "workload": "non-cve",
+    "size": 5000,
+    "result": "not completed; no per-operation timing available"
+  },
+  "workloads": {
+    "ingestion": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 0.125256,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.143509,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 1000,
+        "new": {
+          "seconds": 0.900758,
+          "result_count": 1000
+        },
+        "duplicate_burst": {
+          "seconds": 0.700649,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 5000,
+        "new": {
+          "seconds": 4.371264,
+          "result_count": 5000
+        },
+        "duplicate_burst": {
+          "seconds": 4.979658,
+          "result_count": 0
+        }
+      }
+    ],
+    "non-cve": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 0.601571,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.20774,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 1000,
+        "new": {
+          "seconds": 31.068994,
+          "result_count": 1000
+        },
+        "duplicate_burst": {
+          "seconds": 1.474826,
+          "result_count": 0
+        }
+      }
+    ]
+  },
+  "reviewed_version": "1.0.0",
+  "measurement_note": "Diagnostic results from a busy Windows host; no portable performance threshold or controlled speedup claim."
+}

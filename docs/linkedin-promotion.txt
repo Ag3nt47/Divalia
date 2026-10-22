@@ -1,0 +1,18 @@
+Divalia 1.0 is available: a standalone, optional module development and deployment tool for Angerona Security Suite.
+
+The workflow brings threat intelligence, configurable AI models, detector development and human review into one companion tool:
+
+- Use local models or explicitly enabled API providers, with separate filtering and synthesis roles.
+- Write your own module with create/retest, or generate a candidate from a threat briefing.
+- Inspect source changes, telemetry fixtures and validation evidence.
+- Test Python candidates in a restricted Linux container before approval.
+- Prepare declarative detection packages for Angerona DetectionForge's independent trust, review and promotion process.
+
+The latest review added fair synthesis scheduling, faster duplicate lookup, cancellable inference requests and stronger approval/rollback handling. There is also a practical encoded-PowerShell example with 14 synthetic fixtures and documented coverage limits.
+
+Human review stays central. AI output and passing fixtures are development evidence, not proof that a detection is safe or accurate for every environment.
+
+Source, screenshots, setup and the performance review:
+https://github.com/Ag3nt47/Divalia
+
+#CyberSecurity #OpenSource #DetectionEngineering #ThreatIntelligence #Angerona #Divalia

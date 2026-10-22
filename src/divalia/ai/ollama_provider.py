@@ -15,11 +15,11 @@ class OllamaProvider(HTTPProvider):
                 "system": system,
                 "stream": False,
                 "format": "json",
-                "options": {"temperature": 0, "num_predict": 4096},
+                "options": {"temperature": 0, "num_predict": 256 if role == "light" else 4096},
             },
         )
         output = value.get("response") if isinstance(value, dict) else None
-        if not isinstance(output, str) or len(output) > 100_000:
+        if not isinstance(output, str) or not output or len(output) > 100_000:
             raise ProviderError("Ollama returned invalid/oversized response text")
         return output
 

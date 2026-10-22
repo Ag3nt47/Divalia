@@ -4,6 +4,7 @@ Implements a deliberately narrower subset of Angerona's schema version 1.
 Angerona must independently import, trust, evaluate and promote every package.
 No native module or activation state is written by this exporter.
 """
+
 from __future__ import annotations
 
 import base64
@@ -18,16 +19,32 @@ from typing import Any
 
 from divalia.storage import atomic_write, check_path
 
-_TOP = {"schema_version", "id", "version", "owner", "description", "telemetry", "attack",
-        "severity", "confidence", "logic", "fixtures", "performance", "rollback", "expires_at", "digest"}
+_TOP = {
+    "schema_version",
+    "id",
+    "version",
+    "owner",
+    "description",
+    "telemetry",
+    "attack",
+    "severity",
+    "confidence",
+    "logic",
+    "fixtures",
+    "performance",
+    "rollback",
+    "expires_at",
+    "digest",
+}
 _ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,79}$")
 _SELECTOR = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")
 _FIELD = re.compile(r"^[A-Za-z0-9_.-]{1,80}(?:\|(contains|startswith|endswith))?$")
 
 
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True,
-                      separators=(",", ":"), allow_nan=False).encode()
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
 
 
 def _text(value: Any, name: str, maximum: int = 4096) -> str:
@@ -128,7 +145,9 @@ def validate_detection(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("unsupported schema_version")
     if not _ID.fullmatch(_text(document["id"], "id", 80)):
         raise ValueError("invalid package id")
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?", _text(document["version"], "version", 80)):
+    if not re.fullmatch(
+        r"\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?", _text(document["version"], "version", 80)
+    ):
         raise ValueError("invalid semantic version")
     _text(document["owner"], "owner", 160)
     _text(document["description"], "description")
@@ -138,12 +157,19 @@ def validate_detection(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("confidence must be an integer from 0 through 100")
     for name, pattern in (("telemetry", _ID), ("attack", re.compile(r"^T\d{4}(?:\.\d{3})?$"))):
         values = document[name]
-        if (not isinstance(values, list) or not 1 <= len(values) <= 32
-                or any(not isinstance(value, str) or not pattern.fullmatch(value) for value in values)):
+        if (
+            not isinstance(values, list)
+            or not 1 <= len(values) <= 32
+            or any(not isinstance(value, str) or not pattern.fullmatch(value) for value in values)
+        ):
             raise ValueError(f"invalid {name}")
     logic = document["logic"]
-    if (not isinstance(logic, dict) or set(logic) != {"type", "detection"}
-            or logic["type"] != "sigma-subset" or not isinstance(logic["detection"], dict)):
+    if (
+        not isinstance(logic, dict)
+        or set(logic) != {"type", "detection"}
+        or logic["type"] != "sigma-subset"
+        or not isinstance(logic["detection"], dict)
+    ):
         raise ValueError("logic must be a sigma-subset detection")
     detection = logic["detection"]
     selections = {key: value for key, value in detection.items() if key != "condition"}
@@ -174,22 +200,30 @@ def validate_detection(document: dict[str, Any]) -> dict[str, Any]:
                             raise ValueError("wildcards are unsupported")
     _condition(_text(detection.get("condition"), "condition", 512), selections)
     performance = document["performance"]
-    if not isinstance(performance, dict) or set(performance) != {"max_eval_ms", "max_events_per_second"}:
+    if not isinstance(performance, dict) or set(performance) != {
+        "max_eval_ms",
+        "max_events_per_second",
+    }:
         raise ValueError("invalid performance fields")
-    if (type(performance["max_eval_ms"]) not in (int, float)
-            or not 0.05 <= performance["max_eval_ms"] <= 1000
-            or type(performance["max_events_per_second"]) is not int
-            or not 1 <= performance["max_events_per_second"] <= 1_000_000):
+    if (
+        type(performance["max_eval_ms"]) not in (int, float)
+        or not 0.05 <= performance["max_eval_ms"] <= 1000
+        or type(performance["max_events_per_second"]) is not int
+        or not 1 <= performance["max_events_per_second"] <= 1_000_000
+    ):
         raise ValueError("invalid performance limits")
     rollback = document["rollback"]
     if not isinstance(rollback, dict) or set(rollback) != {"previous_digest", "instructions"}:
         raise ValueError("invalid rollback fields")
     if rollback["previous_digest"] is not None and (
-            not isinstance(rollback["previous_digest"], str)
-            or not re.fullmatch(r"sha256:[0-9a-f]{64}", rollback["previous_digest"])):
+        not isinstance(rollback["previous_digest"], str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", rollback["previous_digest"])
+    ):
         raise ValueError("invalid previous_digest")
     _text(rollback["instructions"], "rollback.instructions", 1000)
-    expires = datetime.fromisoformat(_text(document["expires_at"], "expires_at", 40).replace("Z", "+00:00"))
+    expires = datetime.fromisoformat(
+        _text(document["expires_at"], "expires_at", 40).replace("Z", "+00:00")
+    )
     if expires.tzinfo is None or expires <= datetime.now(timezone.utc):
         raise ValueError("package expiry must be a future timestamp with timezone")
     unsigned = {key: value for key, value in document.items() if key != "digest"}
@@ -225,17 +259,45 @@ def validate_detection(document: dict[str, Any]) -> dict[str, Any]:
     return document
 
 
-def export_detection(document: dict[str, Any], destination: Path | str,
-                     private_key_path: Path | str | None = None, key_id: str = "") -> dict[str, Any]:
+def seal_detection(document: dict[str, Any]) -> dict[str, Any]:
+    """Return a validated, digest-sealed copy without writing or activating it."""
+    if len(_canonical(document)) > 256 * 1024:
+        raise ValueError("detection package exceeds 256 KiB")
+    sealed = json.loads(_canonical(document))
+    sealed.pop("digest", None)
+    sealed["digest"] = "sha256:" + hashlib.sha256(_canonical(sealed)).hexdigest()
+    validate_detection(sealed)
+    return sealed
+
+
+def validate_fixture_agreement(document: dict[str, Any], fixtures: list[dict[str, Any]]) -> None:
+    """Check a portable package against the prototype's declared telemetry cases.
+
+    This evaluates declarative comparisons only; Python detector source is never
+    executed here. Shared fixtures provide evidence of agreement, not equivalence
+    over telemetry that the reviewer has not supplied.
+    """
+    validate_detection(document)
+    for index, fixture in enumerate(fixtures):
+        if (
+            _matches(document["logic"]["detection"], fixture["event"])
+            is not fixture["expected_match"]
+        ):
+            raise ValueError(f"declarative package disagrees with prototype fixture {index}")
+
+
+def export_detection(
+    document: dict[str, Any],
+    destination: Path | str,
+    private_key_path: Path | str | None = None,
+    key_id: str = "",
+) -> dict[str, Any]:
     """Seal and export JSON plus optional ``<name>.sig.json`` exact-byte signature.
 
     The private key is an unencrypted PKCS8 Ed25519 PEM file. Publisher trust
     enrollment and Angerona's promotion gates remain explicit operator actions.
     """
-    sealed = json.loads(_canonical(document))
-    sealed.pop("digest", None)
-    sealed["digest"] = "sha256:" + hashlib.sha256(_canonical(sealed)).hexdigest()
-    validate_detection(sealed)
+    sealed = seal_detection(document)
     payload = _canonical(sealed) + b"\n"
     destination = check_path(Path(destination))
     signature_path = destination.with_suffix(".sig.json")
@@ -252,14 +314,19 @@ def export_detection(document: dict[str, Any], destination: Path | str,
         key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
         if not isinstance(key, Ed25519PrivateKey):
             raise ValueError("signing key must be Ed25519")
-        signature = _canonical({"key_id": key_id,
-                                "signature": base64.b64encode(key.sign(payload)).decode()})
+        signature = _canonical(
+            {"key_id": key_id, "signature": base64.b64encode(key.sign(payload)).decode()}
+        )
     # Refuse replacing existing outputs so a stale detached signature cannot survive.
     if destination.exists() or check_path(signature_path).exists():
         raise FileExistsError("export destination or detached signature already exists")
     atomic_write(destination, payload)
     if signature is not None:
         atomic_write(signature_path, signature + b"\n")
-    return {"path": str(destination), "digest": sealed["digest"],
-            "signature_path": str(signature_path) if signature is not None else None,
-            "signed": signature is not None, "activation": "requires Angerona human import and promotion"}
+    return {
+        "path": str(destination),
+        "digest": sealed["digest"],
+        "signature_path": str(signature_path) if signature is not None else None,
+        "signed": signature is not None,
+        "activation": "requires Angerona human import and promotion",
+    }

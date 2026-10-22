@@ -8,7 +8,9 @@ import os
 import re
 import stat
 import tempfile
+from collections.abc import Iterator
 from datetime import datetime, timezone
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -78,11 +80,33 @@ class ArtifactStore:
             raise ValueError("artifact must be an object")
         return value
 
-    def list(self, category: str) -> list[dict[str, Any]]:
+    def iter_ids(self, category: str) -> Iterator[str]:
+        """Yield validated identifiers in filename order without reading JSON.
+
+        Only filenames are materialized for sorting. Each selected path retains
+        the same confinement checks as ``load``; content is validated on load.
+        """
         if not IDENTIFIER.fullmatch(category):
             raise ValueError("invalid artifact category")
         directory = check_path(self.root / category)
-        return [self.load(category, p.stem) for p in sorted(directory.glob("*.json"))]
+        for path in sorted(directory.glob("*.json")):
+            self.path(category, path.stem)
+            yield path.stem
+
+    def iter_values(self, category: str, *, limit: int | None = None) -> Iterator[dict[str, Any]]:
+        """Load artifacts one at a time, optionally stopping before the archive ends."""
+        if not IDENTIFIER.fullmatch(category):
+            raise ValueError("invalid artifact category")
+        if limit is not None and (
+            isinstance(limit, bool) or not isinstance(limit, int) or limit < 0
+        ):
+            raise ValueError("artifact limit must be a nonnegative integer or None")
+        identifiers = self.iter_ids(category)
+        for identifier in identifiers if limit is None else islice(identifiers, limit):
+            yield self.load(category, identifier)
+
+    def list(self, category: str) -> list[dict[str, Any]]:
+        return list(self.iter_values(category))
 
     def audit(self, action: str, **details: Any) -> None:
         event = {"time": datetime.now(timezone.utc).isoformat(), "action": action, **details}

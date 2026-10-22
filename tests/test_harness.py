@@ -15,6 +15,7 @@ from divalia.harness.sandbox import (
     _OutputLimit,
     _run_bounded,
     canonical_json,
+    normalize_telemetry,
     test_fingerprint as fixture_fingerprint,
 )
 
@@ -86,6 +87,26 @@ class AstPolicyTests(unittest.TestCase):
         result = validate_source("package main", language="go")
         self.assertFalse(result.passed)
         self.assertIn("native sandbox", result.issues[0])
+
+
+class TelemetryTests(unittest.TestCase):
+    def test_validated_telemetry_is_an_independent_json_snapshot(self):
+        original = [{"message": "fixturé", "context": {"values": [True, None, 4]}}]
+        snapshot = normalize_telemetry(original)
+        self.assertEqual(snapshot, original)
+        original[0]["context"]["values"].append("changed")
+        self.assertEqual(snapshot[0]["context"]["values"], [True, None, 4])
+
+    def test_shape_and_nesting_limits_are_checked_before_serialization(self):
+        nested = {}
+        for _ in range(14):
+            nested = {"child": nested}
+        invalid = [[{"message": "x" * 65_537}], [nested], [{"values": [0] * 513}], [{}] * 33]
+        with patch("divalia.harness.sandbox.canonical_json") as serialize:
+            for events in invalid:
+                with self.subTest(events=str(events)[:60]), self.assertRaises(ValueError):
+                    normalize_telemetry(events)
+            serialize.assert_not_called()
 
 
 class DockerHarnessTests(unittest.IsolatedAsyncioTestCase):
@@ -274,6 +295,10 @@ class BoundedCommandTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(_OutputLimit):
             await _run_bounded(
                 [sys.executable, "-c", "import sys; sys.stdout.write('x' * 300000)"], timeout=3
+            )
+        with self.assertRaises(_OutputLimit):
+            await _run_bounded(
+                [sys.executable, "-c", "import sys; sys.stderr.write('x' * 20000)"], timeout=3
             )
         with self.assertRaises(TimeoutError):
             await _run_bounded([sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.2)

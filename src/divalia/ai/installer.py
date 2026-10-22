@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import platform
 import shutil
@@ -15,24 +16,44 @@ from divalia.ai.ollama_provider import OllamaProvider
 from divalia.storage import atomic_write
 
 
-async def check_runtime(provider: OllamaProvider) -> dict[str, Any]:
+async def check_runtime(
+    provider: OllamaProvider, *, roles: tuple[str, ...] = ("light", "heavy")
+) -> dict[str, Any]:
+    required = {role: provider.model(role) for role in roles}
     try:
-        status = await provider.status()
-        return {
-            "ready": True,
+        # Readiness probes should finish promptly even if inference is allowed
+        # several minutes. Native async transport closes the socket on timeout.
+        async with asyncio.timeout(5):
+            status = await provider.status()
+        models = [row["name"] for row in status["models"]
+                  if isinstance(row, dict) and isinstance(row.get("name"), str)]
+        missing = [model for model in dict.fromkeys(required.values())
+                   if model not in models and f"{model}:latest" not in models]
+        result = {
+            "ready": not missing,
+            "engine_ready": True,
             "executable_present": shutil.which("ollama") is not None,
-            "models": [
-                str(row.get("name", "")) for row in status["models"] if isinstance(row, dict)
-            ],
+            "models": models,
+            "configured_models": required,
+            "missing_models": missing,
         }
-    except ProviderError:
+        if missing:
+            result["message"] = (
+                "Configured models are missing; run `divalia runtime --pull MODEL --consent` "
+                "for each missing model, or select an installed model in your configuration."
+            )
+        return result
+    except (ProviderError, TimeoutError):
         return {
             "ready": False,
+            "engine_ready": False,
             "executable_present": shutil.which("ollama") is not None,
             "models": [],
+            "configured_models": required,
+            "missing_models": list(dict.fromkeys(required.values())),
             "download_page": "https://ollama.com/download",
             "platform": platform.system(),
-            "message": "Install/start Ollama or select another provider.",
+            "message": "Install/start Ollama or verify its endpoint; health checks wait at most 5s.",
         }
 
 

@@ -1,0 +1,58 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "allocation_tracing": true,
+  "network": "none; trusted in-memory fixture fetcher",
+  "source_execution": "none; AST validation only",
+  "workloads": {
+    "ingestion": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 0.505953,
+          "peak_bytes": 272564,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.405555,
+          "peak_bytes": 170865,
+          "result_count": 0
+        }
+      }
+    ],
+    "non-cve": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 2.149839,
+          "peak_bytes": 312723,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.659535,
+          "peak_bytes": 154946,
+          "result_count": 0
+        }
+      }
+    ],
+    "sanitizer": [
+      {
+        "size": 100,
+        "input_bytes_each": 55600,
+        "seconds": 7.24607,
+        "peak_bytes": 251468,
+        "result_count": 100
+      }
+    ],
+    "ast": [
+      {
+        "size": 100,
+        "seconds": 0.372567,
+        "peak_bytes": 63636,
+        "result_count": 100
+      }
+    ]
+  },
+  "reviewed_version": "1.0.0",
+  "measurement_note": "Diagnostic results from a busy Windows host; no portable performance threshold or controlled speedup claim."
+}

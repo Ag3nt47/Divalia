@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from divalia.harness.ast_validator import validate_source
-from divalia.harness.sandbox import SandboxRunner, test_fingerprint
+from divalia.harness.sandbox import SandboxRunner, normalize_telemetry, test_fingerprint
 from divalia.storage import ArtifactStore, IDENTIFIER, atomic_write, canonical, check_path, digest
 
 
@@ -128,13 +128,13 @@ class Publisher:
         """
         reviewed = _copy(candidate)
         identifier, source_hash = self._validate(reviewed)
-        if self.store.path("quarantine", f"q-{source_hash}").exists():
-            raise ValueError("source version is quarantined")
         if not isinstance(reviewer, str) or not reviewer.strip() or len(reviewer) > 160:
             raise ValueError("reviewer must be a non-empty name of at most 160 characters")
         if not hmac.compare_digest(source_hash, expected_sha256):
             raise ValueError("reviewed source digest does not match")
         with self._locked():
+            if self.store.path("quarantine", f"q-{source_hash}").exists():
+                raise ValueError("source version is quarantined")
             result = await self.runner.run(reviewed["source"], reviewed["telemetry"])
             if (not result.passed or result.source_sha256 != source_hash
                     or result.status != "passed"
@@ -174,13 +174,21 @@ class Publisher:
         if require_unused and self.store.path("consumed", receipt["id"]).exists():
             raise ValueError("approval has already been used")
 
-    def _version_path(self, identifier: str, version: str) -> Path:
+    def _version_path(self, identifier: str, version: str, receipt_id: str | None = None) -> Path:
         if not IDENTIFIER.fullmatch(identifier) or not re.fullmatch(r"[a-f0-9]{64}", version):
             raise ValueError("invalid plugin version")
-        return check_path(self.root / "versions" / identifier / f"{version}.json")
+        if receipt_id is not None and not re.fullmatch(r"[a-f0-9]{32}", receipt_id):
+            raise ValueError("invalid approval receipt id")
+        suffix = f".{receipt_id}" if receipt_id is not None else ""
+        return check_path(self.root / "versions" / identifier / f"{version}{suffix}.json")
 
-    def _version(self, identifier: str, version: str) -> dict[str, Any]:
-        path = self._version_path(identifier, version)
+    def _version(self, identifier: str, version: str, receipt_id: str | None = None) -> dict[str, Any]:
+        # Original installations stored one snapshot per source hash. A later
+        # review of identical source may have new evidence/fixtures/timestamps;
+        # retain each review independently so rollback never changes its consent.
+        path = self._version_path(identifier, version, receipt_id)
+        if receipt_id is not None and not path.exists():
+            path = self._version_path(identifier, version)
         if self.store.path("quarantine", f"q-{version}").exists():
             raise ValueError("stored plugin version is quarantined")
         if path.stat().st_size > 2 * 1024 * 1024:
@@ -194,7 +202,10 @@ class Publisher:
         receipt_path = check_path(path.with_suffix(".approval.json"))
         if receipt_path.stat().st_size > 2 * 1024 * 1024:
             raise ValueError("stored approval is oversized")
-        self._receipt(value, json.loads(receipt_path.read_bytes()), require_unused=False)
+        receipt = json.loads(receipt_path.read_bytes())
+        if receipt_id is not None and receipt.get("id") != receipt_id:
+            raise ValueError("stored version approval identity mismatch")
+        self._receipt(value, receipt, require_unused=False)
         return value
 
     def activate(self, candidate: dict[str, Any], receipt: dict[str, Any]) -> dict[str, Any]:
@@ -205,21 +216,24 @@ class Publisher:
             self._receipt(candidate, receipt)
             if self.store.path("quarantine", f"q-{version}").exists():
                 raise ValueError("source version is quarantined")
-            path = self._version_path(identifier, version)
-            if path.exists():
-                if not hmac.compare_digest(path.read_bytes(), canonical(candidate)):
-                    raise ValueError("same source version has different reviewed metadata")
-            else:
-                atomic_write(path, canonical(candidate))
-            atomic_write(path.with_suffix(".approval.json"), canonical(receipt))
             prior = self.store.load("plugins", identifier) if self.store.path("plugins", identifier).exists() else {}
             previous = prior.get("active")
             if previous == version:
                 raise ValueError("version is already active")
             if previous:
-                self._version(identifier, previous)
+                self._version(identifier, previous, prior.get("receipt_id"))
                 if prior.get("probation") is not False:
                     raise ValueError("active version must finish probation before replacement")
+            path = self._version_path(identifier, version)
+            if path.exists():
+                path = self._version_path(identifier, version, receipt["id"])
+            # All activation preconditions pass before writing any version data.
+            # Fresh review snapshots never overwrite an existing active/rollback
+            # record, including when the generated source is byte-identical.
+            if path.exists():
+                raise ValueError("reviewed version snapshot already exists")
+            atomic_write(path, canonical(candidate))
+            atomic_write(path.with_suffix(".approval.json"), canonical(receipt))
             # Consume first: a crash may require a new review, but cannot replay consent.
             self.store.save("consumed", receipt["id"], {"time": _now(), "candidate_id": identifier})
             pointer = {"id": identifier, "active": version, "previous": previous,
@@ -236,7 +250,7 @@ class Publisher:
         previous = pointer.get("previous")
         if previous:
             try:
-                self._version(identifier, previous)
+                self._version(identifier, previous, pointer.get("previous_receipt_id"))
                 if self.store.path("quarantine", f"q-{previous}").exists():
                     previous = None
             except (ValueError, OSError, json.JSONDecodeError):
@@ -264,13 +278,14 @@ class Publisher:
         """
         if not isinstance(event, dict):
             raise ValueError("telemetry event must be an object")
+        event = normalize_telemetry([event])[0]
         with self._locked():
             pointer = self.store.load("plugins", plugin_id)
             version = pointer.get("active")
             if not version:
                 raise ValueError("plugin has no active version")
             try:
-                candidate = self._version(plugin_id, version)
+                candidate = self._version(plugin_id, version, pointer.get("receipt_id"))
                 # Bind even the stored metadata to the original authenticated review.
                 receipt = self.store.load("approvals", pointer["receipt_id"])
                 unsigned = {key: value for key, value in receipt.items() if key != "mac"}
@@ -303,12 +318,16 @@ class Publisher:
         identifier = candidate.get("id")
         if not isinstance(identifier, str) or not IDENTIFIER.fullmatch(identifier):
             raise ValueError("invalid candidate id")
-        self.store.save("rejected", identifier, {"candidate": candidate, "reason": reason[:1000],
-                                                  "time": _now()})
-        source = candidate.get("source")
-        if isinstance(source, str) and source:
-            self.store.save("quarantine", f"q-{digest(source)}", {
-                "id": identifier, "version": digest(source), "reason": reason[:1000],
-                "time": _now(),
-            })
-        self.store.audit("candidate_rejected", candidate_id=identifier, reason=reason[:1000])
+        with self._locked():
+            self.store.save("rejected", identifier, {"candidate": candidate, "reason": reason[:1000],
+                                                      "time": _now()})
+            source = candidate.get("source")
+            if isinstance(source, str) and source:
+                self.store.save("quarantine", f"q-{digest(source)}", {
+                    "id": identifier, "version": digest(source), "reason": reason[:1000],
+                    "time": _now(),
+                })
+            # This is the mutable development record only. Active versions and
+            # their authenticated review snapshots remain immutable.
+            self.store.save("candidates", identifier, {**candidate, "state": "rejected"})
+            self.store.audit("candidate_rejected", candidate_id=identifier, reason=reason[:1000])

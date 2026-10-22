@@ -1,0 +1,116 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "allocation_tracing": false,
+  "status": "completed core/AST measurements; larger storage cases stopped during fixture seeding",
+  "storage_termination": {
+    "process_elapsed_seconds": 327.12,
+    "cpu_seconds": 27.48,
+    "result": "100-item archive complete; larger cases incomplete and no timing claimed"
+  },
+  "environment_note": "Concurrent Windows background/test processes caused significant wall-time variance; results are diagnostic, not thresholds.",
+  "workloads": {
+    "ingestion": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 1.527412,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.712346,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 1000,
+        "new": {
+          "seconds": 1.189638,
+          "result_count": 1000
+        },
+        "duplicate_burst": {
+          "seconds": 4.031437,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 5000,
+        "new": {
+          "seconds": 9.826595,
+          "result_count": 5000
+        },
+        "duplicate_burst": {
+          "seconds": 39.107804,
+          "result_count": 0
+        }
+      }
+    ],
+    "non-cve": [
+      {
+        "size": 100,
+        "new": {
+          "seconds": 0.416461,
+          "result_count": 100
+        },
+        "duplicate_burst": {
+          "seconds": 0.582014,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 1000,
+        "new": {
+          "seconds": 3.18594,
+          "result_count": 1000
+        },
+        "duplicate_burst": {
+          "seconds": 2.079751,
+          "result_count": 0
+        }
+      },
+      {
+        "size": 5000,
+        "new": {
+          "seconds": 13.632342,
+          "result_count": 5000
+        },
+        "duplicate_burst": {
+          "seconds": 5.702111,
+          "result_count": 0
+        }
+      }
+    ],
+    "ast": [
+      {
+        "size": 100,
+        "seconds": 0.070674,
+        "result_count": 100
+      },
+      {
+        "size": 1000,
+        "seconds": 0.819095,
+        "result_count": 1000
+      },
+      {
+        "size": 5000,
+        "seconds": 3.425472,
+        "result_count": 5000
+      }
+    ],
+    "storage": [
+      {
+        "size": 100,
+        "list_all": {
+          "seconds": 1.640846,
+          "result_count": 100
+        },
+        "iterate_first_10": {
+          "seconds": 0.032746,
+          "result_count": 10
+        }
+      }
+    ]
+  },
+  "reviewed_version": "1.0.0",
+  "measurement_note": "Diagnostic results from a busy Windows host; no portable performance threshold or controlled speedup claim."
+}

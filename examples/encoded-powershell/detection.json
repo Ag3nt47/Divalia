@@ -1,0 +1,169 @@
+{
+  "attack": [
+    "T1059"
+  ],
+  "confidence": 60,
+  "description": "Observe PowerShell encoded-command flags in normalized process-creation telemetry; administrative automation may also match. Requires basename process_name and ASCII-space-separated full cmdline.",
+  "expires_at": "2027-10-22T00:00:00+00:00",
+  "fixtures": [
+    {
+      "event": {
+        "cmdline": "powershell.exe -NoProfile -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA=",
+        "event_type": "process.creation",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": true,
+      "name": "encodedcommand"
+    },
+    {
+      "event": {
+        "cmdline": "pwsh.exe -EnC VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA=",
+        "event_type": "PROCESS.CREATION",
+        "process_name": "PwSh.ExE"
+      },
+      "expected_match": true,
+      "name": "mixed-case-enc"
+    },
+    {
+      "event": {
+        "cmdline": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA=",
+        "event_type": "process.creation",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": true,
+      "name": "quoted-executable"
+    },
+    {
+      "event": {
+        "cmdline": "powershell.exe -e VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAEQAaQB2AGEAbABpAGEAJwA=",
+        "event_type": "process.creation",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": true,
+      "name": "short-e"
+    },
+    {
+      "event": {
+        "cmdline": "powershell.exe -NoProfile -File C:\\Admin\\Inventory.ps1",
+        "event_type": "process.creation",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": false,
+      "name": "admin-script"
+    },
+    {
+      "event": {
+        "cmdline": "cmd.exe /c echo -EncodedCommand example",
+        "event_type": "process.creation",
+        "process_name": "cmd.exe"
+      },
+      "expected_match": false,
+      "name": "different-process"
+    },
+    {
+      "event": {
+        "cmdline": "powershell.exe -EncodedCommandSuffix example",
+        "event_type": "process.creation",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": false,
+      "name": "lookalike-flag"
+    },
+    {
+      "event": {
+        "cmdline": "powershell.exe -EncodedCommand example",
+        "event_type": "network.connection",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": false,
+      "name": "different-event"
+    },
+    {
+      "event": {
+        "cmdline": null,
+        "event_type": "process.creation",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": false,
+      "name": "null-command"
+    },
+    {
+      "event": {
+        "cmdline": "powershell.exe -EncodedCommand example",
+        "event_type": "process.creation",
+        "process_name": null
+      },
+      "expected_match": false,
+      "name": "null-process"
+    },
+    {
+      "event": {
+        "cmdline": 123,
+        "event_type": "process.creation",
+        "process_name": 42
+      },
+      "expected_match": false,
+      "name": "numeric-fields"
+    },
+    {
+      "event": {
+        "cmdline": "powershell.exe\t-EncodedCommand\texample",
+        "event_type": "process.creation",
+        "process_name": "powershell.exe"
+      },
+      "expected_match": false,
+      "name": "un-normalized-tabs"
+    },
+    {
+      "event": {
+        "cmdline": "powershell.exe -EncodedCommand example",
+        "event_type": "process.creation",
+        "process_name": "C:\\Windows\\powershell.exe"
+      },
+      "expected_match": false,
+      "name": "un-normalized-image"
+    },
+    {
+      "event": {},
+      "expected_match": false,
+      "name": "missing-fields"
+    }
+  ],
+  "id": "divalia.encoded-powershell",
+  "logic": {
+    "detection": {
+      "condition": "selection",
+      "selection": {
+        "cmdline|contains": [
+          " -encodedcommand ",
+          " -enc ",
+          " -e "
+        ],
+        "event_type": "process.creation",
+        "process_name": [
+          "powershell.exe",
+          "powershell",
+          "pwsh.exe",
+          "pwsh"
+        ]
+      }
+    },
+    "type": "sigma-subset"
+  },
+  "owner": "Divalia example maintainers",
+  "performance": {
+    "max_eval_ms": 50,
+    "max_events_per_second": 1000
+  },
+  "rollback": {
+    "instructions": "Disable this package using Angerona DetectionForge review and rollback; restore the previously trusted package if applicable.",
+    "previous_digest": null
+  },
+  "schema_version": 1,
+  "severity": "medium",
+  "telemetry": [
+    "process.creation"
+  ],
+  "version": "1.0.0",
+  "digest": "sha256:8e76381da1816cb427141e044d843d9717574ad100fe91a36ccfadfb86fcfdea"
+}

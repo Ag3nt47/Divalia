@@ -39,7 +39,7 @@ class ThreatBriefing:
             raise ValueError("id, title and source_url must be nonempty")
         if isinstance(self.credibility, bool) or not isinstance(self.credibility, (int, float)):
             raise ValueError("credibility must be a finite number in [0, 1]")
-        if not math.isfinite(self.credibility) or not 0 <= self.credibility <= 1:
+        if not 0 <= self.credibility <= 1 or not math.isfinite(self.credibility):
             raise ValueError("credibility must be a finite number in [0, 1]")
         if self.published_at is not None and not isinstance(self.published_at, str):
             raise ValueError("published_at must be a string or null")
@@ -51,7 +51,10 @@ class ThreatBriefing:
             not isinstance(url, str) for url in self.evidence_urls
         ):
             raise ValueError("evidence_urls must be a tuple of strings")
-        if self.corroboration not in {"unverified", "cross_reported"}:
+        if not isinstance(self.corroboration, str) or self.corroboration not in {
+            "unverified",
+            "cross_reported",
+        }:
             raise ValueError("unsupported corroboration status")
 
     def to_dict(self) -> dict[str, Any]:

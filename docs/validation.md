@@ -69,3 +69,55 @@ and byte-identical public README. Every relative README screenshot must be
 repository-confined, tracked in the reviewed HEAD, decoder-valid, and identical
 both to its committed bytes and its public main asset. Divergence is reported
 without merge, rebase, reset or force.
+
+## October 22, 2026: performance and real module-workflow review
+
+The final local full suite passed on Windows/CPython 3.12.10 with
+`DIVALIA_ANGERONA_SRC` explicitly set: **141 passed, 211 subtests passed,
+6 skipped in 170.96 seconds**. Four skipped tests require a real immutable Linux
+Docker worker; the Docker CLI is absent locally. Two symlink checks require
+privileges unavailable to this account. A skipped execution test is not a
+passing container result.
+
+Ruff across `src`, `tests`, `tools` and `examples`, compilation, `pip check`,
+source/wheel builds and an import/resource/offline-demo check of the built wheel
+passed. All three README screenshots were regenerated and visually inspected.
+The practical [encoded PowerShell example](../examples/encoded-powershell/README.md)
+contains a Python prototype, 14 labeled synthetic events and a matching Angerona
+package. Coverage includes normalization requirements and benign/unsupported
+cases; it does not prove the rule detects every encoded command or establishes
+maliciousness.
+
+The review adds direct `create`/`retest` workflows, a fair bounded synthesis
+queue, cached positive relevance, lazy archive reads, bounded near-duplicate
+indexing, per-role readiness, cancellable inference and lifecycle fixes. Tests
+cover source/fixture/result bindings, declarative package agreement, review
+snapshot preservation, activation preconditions, cancellation cleanup, rejected
+status and malformed telemetry that must not quarantine a healthy module.
+Performance observations, allocator peaks, interrupted baseline cases and
+busy-host limitations are recorded in [the performance review](performance-review.md)
+with sanitized machine-readable measurements.
+
+A real CPU-only local Ollama trial with `llama3.2:3b` returned valid light-role
+classification JSON in **85.93 seconds**. A first heavy response took **58.15
+seconds**, but its `source` was an object rather than the required Python-source
+string; the raw proposal was rejected. It omitted the optional declarative
+package. After clarifying the prompt, a heavy rerun reached the configured
+whole-request timeout at **180.005 seconds** and returned `ProviderError`.
+Neither attempt demonstrated viable heavy synthesis, an accepted module or
+deployment. No generated source ran on the host, and no model downloads or
+remote API calls were performed. The temporary test runtime/process tree was
+cleaned up; the existing shared service was untouched.
+
+The optional runtime-installer binary download was not tested. That path still
+requires explicit consent and a matching SHA-256, bounds the binary size and
+uses a socket inactivity timeout. It does not have the inference adapter's
+whole-request deadline. No successful engine installation or downloaded-binary
+execution is claimed.
+
+**Remote CI is pending for this update.** The workflow defines real-container
+CLI testing with the practical example, API activation/replacement/rollback and
+signed export, plus offline throughput/allocation workloads. JUnit and JSON
+reports are uploaded from `artifacts/` as `isolated-module-workflow`. Inspect the
+run for the published commit before treating those jobs as passed; local offline
+results do not replace real container evidence.
