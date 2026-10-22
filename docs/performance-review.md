@@ -135,6 +135,48 @@ Machine-readable observations:
 identify interrupted workloads. They contain synthetic workload metadata and
 measurements, without credentials, private telemetry or operator paths.
 
+## Verified Linux container run
+
+The [isolated-execution job](https://github.com/Ag3nt47/Divalia/actions/runs/39844398460/job/120053721812)
+passed on published commit `cb5b152098e04912648eb597d8a0145b64f1d27e`:
+**4 real-container tests passed in 8.32 seconds**. The practical 14-fixture module
+completed CLI creation, retesting, review, independent approval, isolated hit/miss
+events and export. The separate API marker lifecycle exercised replacement,
+runtime failure, rollback and exact-byte signed export.
+
+CLI elapsed times on that GitHub Actions Ubuntu/CPython 3.12 runner include
+process startup and Docker where applicable:
+
+| Operation | Seconds |
+| --- | ---: |
+| Create / retest | 0.541 / 0.530 |
+| Review / independent approval | 0.126 / 0.545 |
+| Isolated miss / hit events | 0.537 / 0.541 |
+| Export | 0.129 |
+
+The separate two-event API marker case reported 16 fixture executions in
+0.000243 seconds of worker wall time, peak RSS of 24,356 KiB (about 23.8 MiB)
+and sampled peak growth of 0 KiB. Worker time excludes container startup. These
+tiny fixtures and sampled memory observations do not establish leak freedom,
+memory invariance or production sensor throughput.
+
+Completed untraced offline workloads on the same runner:
+
+| Workload | New/all, seconds | Repeated/first 10, seconds |
+| --- | ---: | ---: |
+| 5,000 CVE-indexed briefings | 1.174 | 0.713 |
+| 5,000 CVE-free briefings | 4.321 | 0.697 |
+| 5,000 AST validations | 1.083 | — |
+| Archive of 5,000 records | 0.839 | 0.0263 |
+
+New ingestion retained 5,000 records, repeated ingestion returned zero new
+records, all AST checks passed, and archive reads returned the requested record
+counts. This runner differs from the busy Windows host above; these values are
+not a controlled cross-hardware speedup comparison. The allocation-traced run
+also completed. See [selected machine-readable job output](performance/github-actions.json)
+for measurements, provenance and the source job URL. Full JUnit/JSON reports
+are available in the run's `isolated-module-workflow` artifact.
+
 ## Reproduce
 
 Use the project's virtual environment and installed dependencies:
@@ -184,20 +226,13 @@ handling is bounded, but it does not solve the model/hardware limitation. No
 model downloads or remote API calls were made. The temporary test runtime and
 its child processes were cleaned up; the existing shared service was untouched.
 
-The updated GitHub workflow defines a real Linux-container job that exercises
-the practical module through CLI create/retest/review/approval, isolated hit/miss
-events and export. A separate API lifecycle test uses a harmless marker module
-to test stable-version replacement, a real detector exception, rollback and
-exact-byte signed export. The job also runs 100/1,000/5,000-item offline
-performance workloads and a smaller allocation-traced run. JUnit and JSON
-reports under `artifacts/` are uploaded as `isolated-module-workflow`, including
-when a prior step fails. A workflow definition is not a passing run.
-
 The Docker CLI is absent on the local review host, so real container execution
-cannot be validated there. Real Linux Docker CI for this update is **pending**;
-local success and the CI definition do not establish a remote pass.
-See [the validation record](validation.md) for the detailed local result and
-remote results when available.
+was validated by the successful isolated GitHub job described above.
+**All seven jobs passed** in
+[run 39844398460](https://github.com/Ag3nt47/Divalia/actions/runs/39844398460):
+Python 3.11, 3.12 and 3.13 on Linux and Windows, plus isolated execution.
+These results apply to the published code commit identified above. See
+[the validation record](validation.md) for the detailed local and remote results.
 Local Docker availability, model reliability and detection quality must be
 assessed separately; AST success and performance measurements cannot establish
 them.

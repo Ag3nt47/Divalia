@@ -115,9 +115,29 @@ uses a socket inactivity timeout. It does not have the inference adapter's
 whole-request deadline. No successful engine installation or downloaded-binary
 execution is claimed.
 
-**Remote CI is pending for this update.** The workflow defines real-container
-CLI testing with the practical example, API activation/replacement/rollback and
-signed export, plus offline throughput/allocation workloads. JUnit and JSON
-reports are uploaded from `artifacts/` as `isolated-module-workflow`. Inspect the
-run for the published commit before treating those jobs as passed; local offline
-results do not replace real container evidence.
+The [real-container job](https://github.com/Ag3nt47/Divalia/actions/runs/39844398460/job/120053721812)
+passed for published commit `cb5b152098e04912648eb597d8a0145b64f1d27e`:
+**4 tests passed in 8.32 seconds**. It exercised the practical 14-fixture module
+through CLI creation, retesting, review, independent approval, isolated hit/miss
+events and export, plus the API marker lifecycle's replacement, detector failure,
+rollback and signed export. CLI create/retest/approval took 0.541/0.530/0.545
+seconds; isolated events took 0.537/0.541 seconds and export 0.129 seconds,
+including process startup and Docker where applicable.
+
+The separate two-event API marker worker reported 16 fixture executions in
+0.000243 seconds, peak RSS of 24,356 KiB and sampled peak growth of 0 KiB.
+Worker-only time excludes container startup; small synthetic fixtures and a
+zero sampled growth value do not prove memory invariance or absence of leaks.
+The clean runner also completed 5,000-record workloads: CVE-indexed ingestion
+1.174 seconds new / 0.713 repeated, CVE-free ingestion 4.321 / 0.697, AST checking
+1.083, and an archive read of 0.839 seconds for all records versus 0.0263 for
+the first ten. These Linux results are separate observations, not controlled
+speedup comparisons with the busy Windows review host.
+
+Full JUnit and performance/allocation JSON reports are uploaded from `artifacts/`
+as `isolated-module-workflow`. A [selected machine-readable job record](performance/github-actions.json)
+includes provenance, exact measurements and source links. **All seven jobs
+passed** in [run 39844398460](https://github.com/Ag3nt47/Divalia/actions/runs/39844398460):
+Python 3.11, 3.12 and 3.13 on Linux and Windows, plus isolated execution.
+This verifies the complete configured matrix for the published code commit
+identified above, including real container execution for the tested cases.

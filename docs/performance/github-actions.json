@@ -1,0 +1,267 @@
+{
+  "run_url": "https://github.com/Ag3nt47/Divalia/actions/runs/39844398460",
+  "job_url": "https://github.com/Ag3nt47/Divalia/actions/runs/39844398460/job/120053721812",
+  "commit": "cb5b152098e04912648eb597d8a0145b64f1d27e",
+  "environment": "GitHub Actions ubuntu-latest; CPython 3.12",
+  "provenance": "Selected machine-readable output from the completed isolated-execution job log",
+  "real_container_tests": {
+    "passed": 4,
+    "seconds": 8.32,
+    "practical_example_fixtures": 14
+  },
+  "cli_workflow_seconds": {
+    "approve": [
+      0.5454352909999898
+    ],
+    "create": [
+      0.5407842089999946
+    ],
+    "export": [
+      0.1286486759999974
+    ],
+    "retest": [
+      0.530211707999996
+    ],
+    "review": [
+      0.12649920699999484
+    ],
+    "run-event": [
+      0.5370724550000006,
+      0.5408170239999919
+    ]
+  },
+  "isolated_lifecycle_metrics": {
+    "2b5bbadad72e": {
+      "container_validation_seconds": 0.3933010330000002,
+      "worker": {
+        "executions": 16,
+        "peak_rss_growth_kib": 0,
+        "peak_rss_kib": 24356,
+        "wall_seconds": 0.00024283599999819216
+      }
+    },
+    "953df3c3e4e1": {
+      "container_validation_seconds": 0.40575175500001137,
+      "worker": {
+        "executions": 16,
+        "peak_rss_growth_kib": 0,
+        "peak_rss_kib": 24580,
+        "wall_seconds": 0.0002462519999966162
+      }
+    },
+    "independent_approval_seconds": 0.41159037500000295,
+    "two_isolated_runtime_events_seconds": 0.8159015519999997
+  },
+  "offline_benchmarks": [
+    {
+      "workload": "ingestion",
+      "size": 100,
+      "new": {
+        "seconds": 0.023637,
+        "peak_bytes": null,
+        "result_count": 100
+      },
+      "duplicate_burst": {
+        "seconds": 0.013758,
+        "peak_bytes": null,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "ingestion",
+      "size": 1000,
+      "new": {
+        "seconds": 0.226357,
+        "peak_bytes": null,
+        "result_count": 1000
+      },
+      "duplicate_burst": {
+        "seconds": 0.141893,
+        "peak_bytes": null,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "ingestion",
+      "size": 5000,
+      "new": {
+        "seconds": 1.174301,
+        "peak_bytes": null,
+        "result_count": 5000
+      },
+      "duplicate_burst": {
+        "seconds": 0.71342,
+        "peak_bytes": null,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "non-cve",
+      "size": 100,
+      "new": {
+        "seconds": 0.026853,
+        "peak_bytes": null,
+        "result_count": 100
+      },
+      "duplicate_burst": {
+        "seconds": 0.01282,
+        "peak_bytes": null,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "non-cve",
+      "size": 1000,
+      "new": {
+        "seconds": 0.557637,
+        "peak_bytes": null,
+        "result_count": 1000
+      },
+      "duplicate_burst": {
+        "seconds": 0.136947,
+        "peak_bytes": null,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "non-cve",
+      "size": 5000,
+      "new": {
+        "seconds": 4.320797,
+        "peak_bytes": null,
+        "result_count": 5000
+      },
+      "duplicate_burst": {
+        "seconds": 0.696727,
+        "peak_bytes": null,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "ast",
+      "size": 100,
+      "seconds": 0.021994,
+      "peak_bytes": null,
+      "result_count": 100
+    },
+    {
+      "workload": "ast",
+      "size": 1000,
+      "seconds": 0.215247,
+      "peak_bytes": null,
+      "result_count": 1000
+    },
+    {
+      "workload": "ast",
+      "size": 5000,
+      "seconds": 1.082605,
+      "peak_bytes": null,
+      "result_count": 5000
+    },
+    {
+      "workload": "storage",
+      "size": 100,
+      "list_all": {
+        "seconds": 0.017186,
+        "peak_bytes": null,
+        "result_count": 100
+      },
+      "iterate_first_10": {
+        "seconds": 0.002285,
+        "peak_bytes": null,
+        "result_count": 10
+      }
+    },
+    {
+      "workload": "storage",
+      "size": 1000,
+      "list_all": {
+        "seconds": 0.166576,
+        "peak_bytes": null,
+        "result_count": 1000
+      },
+      "iterate_first_10": {
+        "seconds": 0.006488,
+        "peak_bytes": null,
+        "result_count": 10
+      }
+    },
+    {
+      "workload": "storage",
+      "size": 5000,
+      "list_all": {
+        "seconds": 0.839225,
+        "peak_bytes": null,
+        "result_count": 5000
+      },
+      "iterate_first_10": {
+        "seconds": 0.026335,
+        "peak_bytes": null,
+        "result_count": 10
+      }
+    },
+    {
+      "workload": "ingestion",
+      "size": 100,
+      "new": {
+        "seconds": 0.104146,
+        "peak_bytes": 270108,
+        "result_count": 100
+      },
+      "duplicate_burst": {
+        "seconds": 0.054433,
+        "peak_bytes": 165496,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "non-cve",
+      "size": 100,
+      "new": {
+        "seconds": 0.110891,
+        "peak_bytes": 1248342,
+        "result_count": 100
+      },
+      "duplicate_burst": {
+        "seconds": 0.052223,
+        "peak_bytes": 149673,
+        "result_count": 0
+      }
+    },
+    {
+      "workload": "sanitizer",
+      "size": 100,
+      "input_bytes_each": 55600,
+      "seconds": 2.16496,
+      "peak_bytes": 251582,
+      "result_count": 100
+    },
+    {
+      "workload": "ast",
+      "size": 100,
+      "seconds": 0.086949,
+      "peak_bytes": 71707,
+      "result_count": 100
+    },
+    {
+      "workload": "storage",
+      "size": 100,
+      "list_all": {
+        "seconds": 0.060202,
+        "peak_bytes": 181818,
+        "result_count": 100
+      },
+      "iterate_first_10": {
+        "seconds": 0.008435,
+        "peak_bytes": 93332,
+        "result_count": 10
+      }
+    }
+  ],
+  "notes": [
+    "CLI timings include process startup and Docker where applicable; worker-only timings exclude container startup.",
+    "Ingestion uses synthetic in-memory feeds; no live feed, model or production sensor throughput is measured.",
+    "Non-null allocation peaks are tracemalloc observations, not process RSS.",
+    "One CI run is an observation, not a portable performance guarantee or proof of leak freedom."
+  ]
+}
