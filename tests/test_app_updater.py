@@ -626,3 +626,71 @@ def test_metadata_worker_returns_only_bounded_commit_identity():
     assert updater._bounded_metadata(_valid_metadata_worker) == "a" * 40
     with pytest.raises(updater.UpdateError, match="failed"):
         updater._bounded_metadata(_oversized_metadata_worker)
+
+
+@pytest.mark.parametrize("mode", ["version", "spaced-config", "invalid-argument"])
+def test_real_application_launch_preserves_output_arguments_and_exit_status(
+    tmp_path: Path, mode: str
+):
+    # The fake check consumes no network/Git operations. _launch itself is real,
+    # including Windows wait semantics and inherited output pipes/cwd.
+    script = (
+        "import sys; from divalia.integration.app_updater import main,UpdateStatus; "
+        "manager=type('OfflineCheck',(),{'check':lambda self,force=False: "
+        "UpdateStatus('current',message='Offline metadata fixture')})(); "
+        "raise SystemExit(main(sys.argv[1:],manager_factory=lambda root:manager,interactive=False))"
+    )
+    arguments = ["--version"]
+    if mode == "spaced-config":
+        configuration = tmp_path / "config path/divalia.toml"
+        configuration.parent.mkdir()
+        configuration.write_text('[app]\nstate_dir="state"\n', encoding="utf-8")
+        arguments = ["--config", str(configuration), "providers"]
+    elif mode == "invalid-argument":
+        arguments = ["providers", "--not-a-divalia-option"]
+    env = {**os.environ, "PYTHONPATH": str(Path(updater.__file__).parents[2])}
+    result = subprocess.run(
+        [sys.executable, "-c", script, "--run", *arguments],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert "Offline metadata fixture" in result.stdout
+    assert "Traceback" not in result.stderr
+    if mode == "invalid-argument":
+        assert result.returncode == 2
+        assert "--not-a-divalia-option" in result.stderr
+    else:
+        assert result.returncode == 0
+        if mode == "spaced-config":
+            assert "local" in json.loads(result.stdout[result.stdout.index("{") :])
+        else:
+            from divalia import __version__
+
+            assert __version__ in result.stdout
+
+
+def test_launcher_reports_start_failure_without_traceback_or_private_error(capsys, tmp_path: Path):
+    class OfflineCheck:
+        def check(self, *, force=False):
+            return updater.UpdateStatus("current", message="Offline metadata fixture")
+
+    def fail(_):
+        raise OSError("private host path or credential detail")
+
+    assert (
+        updater.main(
+            ["--run", "--version"],
+            root=tmp_path,
+            manager_factory=lambda _: OfflineCheck(),
+            interactive=False,
+            launch=fail,
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert "could not be started" in captured.err
+    assert "private host" not in captured.err
+    assert "Traceback" not in captured.err

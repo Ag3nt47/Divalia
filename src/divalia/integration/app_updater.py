@@ -928,13 +928,21 @@ def format_status(status: UpdateStatus) -> str:
 
 
 def _launch(arguments: list[str]) -> int:
-    # All updater locks have been released before the interpreter is replaced.
+    # All updater locks have been released before the application starts.
     environment = dict(os.environ)
     existing = environment.get("PYTHONPATH", "")
     environment["PYTHONPATH"] = str(source_root() / "src") + (
         os.pathsep + existing if existing else ""
     )
-    os.execve(sys.executable, [sys.executable, "-m", "divalia", *arguments], environment)
+    command = [sys.executable, "-m", "divalia", *arguments]
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if os.name == "nt":
+        # Windows CRT exec does not preserve the outer process's wait/output
+        # contract. Keep this launcher alive until its exact application child
+        # exits, inheriting the console/pipes and returning the real exit code.
+        return subprocess.call(command, env=environment)
+    os.execve(sys.executable, command, environment)
     return 0  # pragma: no cover
 
 
@@ -996,5 +1004,12 @@ def main(
         result = 2
     if args.run is not None:
         # A declined, unavailable or setup-held update can still launch the installed version.
-        return launch(args.run)
+        try:
+            return launch(args.run)
+        except OSError:
+            print(
+                "Divalia could not be started. Check the Python installation and launch manually.",
+                file=sys.stderr,
+            )
+            return 2
     return result

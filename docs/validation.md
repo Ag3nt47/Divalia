@@ -144,7 +144,7 @@ identified above, including real container execution for the tested cases.
 
 ## Approved updater review — October 23, 2026
 
-The final Windows/CPython 3.12.10 full suite passed **204 tests and 213
+The Windows/CPython 3.12.10 full suite passed **204 tests and 213
 subtests**, with **7 skipped**, in 715.52 seconds. Four controls require a real
 Linux Docker worker, unavailable locally; three require unavailable symlink
 privileges. `DIVALIA_ANGERONA_SRC` explicitly selected the isolated Angerona
@@ -167,3 +167,14 @@ isolated build resolved its declared build dependencies and succeeded.
 Production installation and forced restart were not performed. The earlier
 container/CI record above applies to its named commit; new CI results must be
 checked separately for the updater revision.
+
+All seven jobs passed in [run 40007039872](https://github.com/Ag3nt47/Divalia/actions/runs/40007039872)
+for updater commit `f94de6bf5cfb3915d5a85a9057cf82d30711f4e9`, including real
+Docker execution and the Linux/Windows Python 3.11–3.13 matrix. A subsequent
+Windows startup smoke exposed CRT interpreter-handoff output/exit-status loss.
+The launcher now flushes output and waits for its exact application child on
+Windows; POSIX keeps interpreter replacement. Four focused controls passed,
+including real captured version output, a loaded configuration path containing
+spaces, and child failure exit status. A real cached `--run --version` invocation
+also returned visible update status, version `1.0.0` and exit zero. Check CI
+separately for the follow-up launch-fix commit.
