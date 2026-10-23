@@ -1,4 +1,5 @@
 include README.md LICENSE SECURITY.md AGENTS.md config.example.toml llms.txt
+include start-divalia-updated.bat
 recursive-include docs *.md *.png *.json *.txt
 recursive-include examples *.md *.py *.json
 recursive-include tools *.py

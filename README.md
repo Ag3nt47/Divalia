@@ -94,6 +94,11 @@ For a practical module and matching Angerona package, follow the
 synthetic fixtures document normalized telemetry, benign cases and narrow
 string-matching coverage; it does not classify every encoded command as malicious.
 
+For approved daily application updates, use
+[the update launcher](docs/application-updates.md). It checks GitHub on the first
+launch each day, prompts before downloading source, and starts a fresh process
+after an approved fast-forward. Local changes and active commands hold updates.
+
 ## Models and API keys
 
 Model names are configurable strings; choose models supported by your runtime

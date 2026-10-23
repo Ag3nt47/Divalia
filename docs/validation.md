@@ -141,3 +141,29 @@ passed** in [run 39844398460](https://github.com/Ag3nt47/Divalia/actions/runs/39
 Python 3.11, 3.12 and 3.13 on Linux and Windows, plus isolated execution.
 This verifies the complete configured matrix for the published code commit
 identified above, including real container execution for the tested cases.
+
+## Approved updater review — October 23, 2026
+
+The final Windows/CPython 3.12.10 full suite passed **204 tests and 213
+subtests**, with **7 skipped**, in 715.52 seconds. Four controls require a real
+Linux Docker worker, unavailable locally; three require unavailable symlink
+privileges. `DIVALIA_ANGERONA_SRC` explicitly selected the isolated Angerona
+source checkout. This elapsed time includes concurrent publication work and
+is not a controlled performance comparison.
+
+The updater controls use real temporary Git repositories and injected public
+metadata/transport. They cover daily attempt caching, exact-commit consent,
+fast-forward-only application, preservation of local and ignored files,
+dependency/container-build holds, concurrent runtime leases, bounded network
+and Git workers, owned child retirement, argument forwarding and failure holds.
+Normal help/version and read-only source commands remain usable without
+writable updater state. No generated detector was executed on the host.
+
+Ruff, compilation, `pip check`, the normal isolated source/wheel build and a
+built-wheel import/offline-demo check passed. The wheel contains the updater
+module; the source archive contains its Python and Windows launchers.
+An initial `--no-isolation` build could not find local setuptools; the standard
+isolated build resolved its declared build dependencies and succeeded.
+Production installation and forced restart were not performed. The earlier
+container/CI record above applies to its named commit; new CI results must be
+checked separately for the updater revision.

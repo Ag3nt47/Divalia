@@ -10,11 +10,15 @@ through Angerona DetectionForge. Divalia's Python runtime remains separate.
 - docs/performance-review.md: reviewed fixes, reproducible diagnostic workloads, allocation peaks and incomplete/noisy-host measurement limits.
 - docs/validation.md: offline and opt-in integration validation.
 - docs/screenshots.md: actual review and CLI screenshots, fixture provenance and regeneration.
+- docs/application-updates.md: daily GitHub checks, exact-commit approval, source-checkout requirements and Angerona's verified-release policy.
 - SECURITY.md: trust boundaries and fail-closed execution constraints.
 
 Never run generated source on the host or bypass Angerona promotion authorities.
 Only a reviewed immutable Linux Docker worker may execute Python candidates.
 Native Go and native Angerona source-code hot reload are unsupported.
 Remote providers require explicit configuration; keys stay in process environment.
+tools/update_divalia.py --run watch checks public main once per local day before starting.
+Updates require exact commit approval, a clean idle main checkout, and unchanged setup inputs.
+Normal commands hold runtime leases but do not make update network requests.
 create/retest do not require an AI provider; passing tests still require the reviewed Linux worker.
 list defaults to 100 records; --limit accepts 1..10000. once/watch batch limits are 1..20.

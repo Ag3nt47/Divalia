@@ -6,6 +6,7 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+.tmp/
 .env
 .env.*
 !.env.example

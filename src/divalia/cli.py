@@ -512,8 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def _main_impl(args: argparse.Namespace) -> int:
     maximum_limit = 10000 if args.command == "list" else 20
     if hasattr(args, "limit") and not 1 <= args.limit <= maximum_limit:
         print(f"Divalia: --limit must be 1..{maximum_limit}", file=sys.stderr)
@@ -548,6 +547,29 @@ def main(argv: list[str] | None = None) -> int:
         if handler is not None:
             logging.getLogger().removeHandler(handler)
             handler.close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    # argparse's help/version actions finish without creating updater state.
+    args = build_parser().parse_args(argv)
+    # Normal commands retain a process-owned lease until their work and logging
+    # have finished. The separate updater never replaces a checkout in use.
+    from contextlib import ExitStack
+
+    from divalia.integration.app_updater import UpdateError, application_use
+
+    try:
+        with ExitStack() as leases:
+            try:
+                leases.enter_context(application_use())
+            except PermissionError:
+                # A read-only source checkout cannot be self-updated. Keeping the
+                # optional updater's state there must not prevent ordinary use.
+                pass
+            return _main_impl(args)
+    except (UpdateError, OSError) as exc:
+        print("Divalia: " + json.dumps(str(exc), ensure_ascii=True), file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
